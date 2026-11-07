@@ -50,7 +50,7 @@ export default function Showcase() {
 
       <div className="grid">
         {ads.map((ad) => (
-          <div key={ad.id} className="card flip" onClick={() => setFlipped(flipped === ad.slug ? "" : ad.slug)}>
+          <div key={ad.id} className="card flip holo" onClick={() => setFlipped(flipped === ad.slug ? "" : ad.slug)}>
             {flipped === ad.slug ? (
               <>
                 <h3>{ad.icon} {ta ? "இது எப்படி உருவாக்கப்பட்டது" : "How this ad was made"}</h3>

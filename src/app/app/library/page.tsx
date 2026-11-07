@@ -71,7 +71,7 @@ export default function Library() {
           <h2>{ta ? "உங்கள் வகைகளுக்கு ஏற்றது" : "Fitted to your categories"} {myCats.map((k) => categoryByKey(k)?.icon ?? "").join(" ")}</h2>
           <div className="grid">
             {shelf.map((d) => (
-              <div key={d.id} className="card">
+              <div key={d.id} className="card holo">
                 <DesignScene design={d} headline={ta ? (categoryByKey(myCats[0])?.headlineTa ?? d.familyTa) : (categoryByKey(myCats[0])?.headlineEn ?? d.familyEn)} offer={ta ? (categoryByKey(myCats[0])?.offerTa ?? "") : (categoryByKey(myCats[0])?.offerEn ?? "")} business="" lang={lang} />
                 <div className="row" style={{ marginTop: 8 }}>
                   <b>{ta ? d.familyTa : d.familyEn}</b>{d.premium ? <Badge kind="premium" lang={lang} /> : <Badge kind="free" lang={lang} />}
@@ -86,7 +86,7 @@ export default function Library() {
       <h2>{ta ? "Showcase வடிவங்கள் (11)" : "Showcase designs (11)"}</h2>
       <div className="grid">
         {data.showcase.filter((s) => s.enabled).map((s) => (
-          <div key={s.key} className="card">
+          <div key={s.key} className="card holo">
             <b>{ta ? s.ta : s.en}</b>
             <p className="small muted">{ta ? s.blurbTa : s.blurbEn}</p>
             <p className="small"><span className="badge">{s.size}</span> <span className="badge">{s.scene}</span></p>
@@ -117,7 +117,7 @@ export default function Library() {
       {catFilter && <p className="small muted">{ta ? "தேர்ந்த வகைக்கான தொடக்க வரிகள்:" : "Starter lines for the picked category:"} “{ta ? categoryByKey(catFilter)?.headlineTa : categoryByKey(catFilter)?.headlineEn}” · “{ta ? categoryByKey(catFilter)?.offerTa : categoryByKey(catFilter)?.offerEn}” — {ta ? "Studio-வில் தானாக வரும்." : "they pre-fill in the Studio."}</p>}
       <div className="grid">
         {pageItems.map((d) => (
-          <div key={d.id} className="card">
+          <div key={d.id} className="card holo">
             <DesignScene design={d} headline={ta ? d.vibeTa : d.vibeEn} offer="" business="" lang={lang} />
             <div className="row" style={{ marginTop: 8 }}>
               <b>{ta ? d.familyTa : d.familyEn}</b>

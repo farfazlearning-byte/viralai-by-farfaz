@@ -8,9 +8,19 @@ export const dynamic = "force-dynamic";
 
 export const GET = handler(async () => {
   const user = await requireUser();
+  // Resolve the placed media's real Blob URL + kind server-side, so a saved
+  // creative always plays back exactly what was placed (the hosted edition
+  // lost the media on save — here the join makes that impossible to hide).
   const rows = await q(
-    `SELECT id, campaign_id, design_key, title, headline, body, language, media_id, logo_media_id, audio_media_id, workflow_status, created_at
-       FROM creatives WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`,
+    `SELECT c.id, c.campaign_id, c.design_key, c.title, c.headline, c.body, c.language,
+            c.media_id, c.logo_media_id, c.audio_media_id, c.workflow_status, c.created_at, c.data,
+            m.blob_url AS media_url, m.kind AS media_kind,
+            lm.blob_url AS logo_url, am.blob_url AS audio_url
+       FROM creatives c
+       LEFT JOIN media m ON m.id = c.media_id AND m.user_id = c.user_id
+       LEFT JOIN media lm ON lm.id = c.logo_media_id AND lm.user_id = c.user_id
+       LEFT JOIN media am ON am.id = c.audio_media_id AND am.user_id = c.user_id
+      WHERE c.user_id=$1 ORDER BY c.created_at DESC LIMIT 200`,
     [user.id],
   );
   return ok({ creatives: rows });

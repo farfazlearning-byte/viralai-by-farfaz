@@ -2,11 +2,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AppShell, useLang } from "@/components/Shell";
 import { DesignScene, Field, ErrBox, Badge } from "@/components/ui";
+import { ExportShare } from "@/components/ExportShare";
 import { api } from "@/lib/client";
 import { allDesigns, designById, type DesignDef } from "@/lib/designs";
 import { CATEGORIES, categoryByKey } from "@/lib/categories";
 
-interface Creative { id: number; title: string; headline: string; design_key: string; campaign_id: number | null }
+interface Creative {
+  id: number; title: string; headline: string; body: string; design_key: string; campaign_id: number | null;
+  media_url: string | null; media_kind: string | null; data: { business?: string; offer?: string } | string | null;
+}
 interface Campaign { id: number; name: string; is_sample: boolean }
 interface MediaItem { id: number; kind: string; name: string; blob_url: string }
 
@@ -27,6 +31,8 @@ export default function Studio() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [myCats, setMyCats] = useState<string[]>([]);
+  const [canRemoveWatermark, setCanRemoveWatermark] = useState(false);
+  const [placedNote, setPlacedNote] = useState(false);
 
   async function refresh() {
     const c = await api("/api/campaigns").catch(() => ({ campaigns: [] }));
@@ -38,6 +44,8 @@ export default function Studio() {
     const a = await api("/api/account").catch(() => ({}) as Record<string, unknown>);
     const cats = (a.chosenCategories as string[]) ?? [];
     setMyCats(cats);
+    const pos = a.position as { tier?: string } | undefined;
+    setCanRemoveWatermark(Boolean(pos && pos.tier && pos.tier !== "free"));
     if (cats.length && !business) {
       const cat = categoryByKey(cats[0]);
       if (cat) {
@@ -53,6 +61,12 @@ export default function Studio() {
       const d = designById(t);
       if (d) setDesign(d);
       sessionStorage.removeItem("viralai_template");
+    }
+    const mid = sessionStorage.getItem("viralai_media");
+    if (mid) {
+      setMediaId(mid);
+      setPlacedNote(true);
+      sessionStorage.removeItem("viralai_media");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -125,7 +139,18 @@ export default function Studio() {
           {myCats.length > 0 && <p className="small muted">{ta ? "உங்கள் வகைகள்:" : "Your categories:"} {myCats.map((k) => categoryByKey(k)?.icon ?? "").join(" ")}</p>}
         </div>
         <div>
-          <DesignScene design={design} headline={headline} offer={offer} business={business} lang={lang} mediaUrl={chosenMedia?.blob_url} />
+          {placedNote && (
+            <p className="okbox">{ta
+              ? "உங்கள் ஊடகம் இங்கே வைக்கப்பட்டது ✓ — அடுத்து: உங்கள் வார்த்தைகளைச் சேருங்கள் → சேமியுங்கள் → Export & Share."
+              : "Your media is placed here ✓ — Next: add your words → Save → Export & Share."}</p>
+          )}
+          <DesignScene design={design} headline={headline} offer={offer} business={business} lang={lang} mediaUrl={chosenMedia?.blob_url} mediaKind={chosenMedia?.kind} />
+          {chosenMedia?.kind === "audio" && (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <audio src={chosenMedia.blob_url} controls style={{ width: "100%", marginTop: 8 }} />
+          )}
+          <ExportShare design={design} headline={headline} offer={offer} business={business} lang={lang}
+            mediaUrl={chosenMedia?.blob_url} mediaKind={chosenMedia?.kind} canRemoveWatermark={canRemoveWatermark} />
           <div className="card">
             <h3>📱 {ta ? "சேனல் மாதிரிகள்" : "Channel mockups"}</h3>
             <p><b>Instagram:</b> {business || "•••"} — {headline}</p>
@@ -137,11 +162,19 @@ export default function Studio() {
       </div>
       <h2>{ta ? "என் creative நூலகம்" : "My creative library"}</h2>
       {creatives.length === 0 ? <p className="muted">{ta ? "இன்னும் இல்லை — முதல் creative-ஐச் சேமியுங்கள்." : "None yet — save your first creative."}</p> : (
-        <div className="grid">{creatives.map((cr) => (
-          <div key={cr.id} className="card"><b>{cr.title || cr.headline}</b><p className="small muted">{cr.design_key}</p>
-            <button className="btn small" onClick={async () => { await api("/api/creatives", { method: "POST", body: JSON.stringify({ action: "delete", id: cr.id }) }); refresh(); }}>{ta ? "நீக்கு" : "Delete"}</button>
-          </div>
-        ))}</div>
+        <div className="grid">{creatives.map((cr) => {
+          const d = designById(cr.design_key) ?? starter;
+          const data = typeof cr.data === "string" ? (() => { try { return JSON.parse(cr.data) as { business?: string; offer?: string }; } catch { return {}; } })() : (cr.data ?? {});
+          return (
+            <div key={cr.id} className="card holo">
+              <DesignScene design={d} headline={cr.headline || cr.title} offer={data.offer ?? ""} business={data.business ?? ""} lang={lang}
+                mediaUrl={cr.media_url ?? undefined} mediaKind={cr.media_kind ?? undefined} />
+              <p style={{ marginTop: 8 }}><b>{cr.title || cr.headline}</b></p>
+              <p className="small muted">{cr.design_key}</p>
+              <button className="btn small" onClick={async () => { await api("/api/creatives", { method: "POST", body: JSON.stringify({ action: "delete", id: cr.id }) }); refresh(); }}>{ta ? "நீக்கு" : "Delete"}</button>
+            </div>
+          );
+        })}</div>
       )}
       <p className="small muted">{CATEGORIES.length} {ta ? "வகைகள் பதிவு செய்யப்பட்டுள்ளன — Studio தொடக்க வரிகள் உங்கள் வகைக்கு ஏற்ப வரும்." : "business categories are registered — Studio starter lines follow your category."}</p>
     </AppShell>

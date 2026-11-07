@@ -21,7 +21,7 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createSession(userId: number): Promise<void> {
+export async function createSession(userId: number, keepSignedIn = true): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + SESSION_DAYS * 86400_000);
   await q(`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1,$2,$3)`, [
@@ -35,7 +35,11 @@ export async function createSession(userId: number): Promise<void> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    expires,
+    // "Keep me signed in" (default on): a persistent 30-day cookie that
+    // survives browser/app close. Off: a browser-session cookie only —
+    // it disappears when the browser is closed. The cookie holds only the
+    // random session token; the password is never stored anywhere.
+    ...(keepSignedIn ? { expires } : {}),
   });
 }
 

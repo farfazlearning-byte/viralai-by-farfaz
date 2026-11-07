@@ -16,6 +16,7 @@ function AuthForm() {
   const [country, setCountry] = useState("India");
   const [city, setCity] = useState("");
   const [ref, setRef] = useState((params.get("ref") ?? "").toUpperCase());
+  const [keep, setKeep] = useState(true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const ta = lang === "ta";
@@ -34,8 +35,8 @@ function AuthForm() {
         method: "POST",
         body: JSON.stringify(
           mode === "signup"
-            ? { action: "signup", name, email, password, country, city, ref }
-            : { action: "signin", email, password },
+            ? { action: "signup", name, email, password, country, city, ref, keepSignedIn: keep }
+            : { action: "signin", email, password, keepSignedIn: keep },
         ),
       });
       const user = res.user as { is_owner?: boolean } | null;
@@ -70,7 +71,7 @@ function AuthForm() {
         {mode === "signup" && (
           <>
             <Field label={ta ? "உங்கள் பெயர்" : "Your name"}>
-              <input value={name} onChange={(e) => setName(e.target.value)} required />
+              <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
             </Field>
             <Field label={ta ? "நாடு" : "Country"}>
               <select value={country} onChange={(e) => setCountry(e.target.value)}>
@@ -88,11 +89,15 @@ function AuthForm() {
           </>
         )}
         <Field label={ta ? "மின்னஞ்சல்" : "Email"}>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete={mode === "signup" ? "email" : "username"} />
         </Field>
         <Field label={ta ? "கடவுச்சொல்" : "Password"}>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
         </Field>
+        <label className="small" style={{ display: "block", margin: "8px 0" }}>
+          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} style={{ width: "auto" }} />{" "}
+          {ta ? "இந்த சாதனத்தில் உள்நுழைந்தே இரு (30 நாட்கள்)" : "Keep me signed in on this device (30 days)"}
+        </label>
         <ErrBox msg={err} />
         <button className="btn primary" style={{ width: "100%" }} disabled={busy}>
           {busy ? "…" : mode === "signup" ? (ta ? "கணக்கு உருவாக்குக" : "Create account") : ta ? "உள்நுழைக" : "Sign in"}

@@ -104,6 +104,33 @@ table.tbl th, table.tbl td { border-bottom: 1px solid var(--line); padding: 8px 
 @keyframes kw { to { opacity: 1; } }
 .scene-anim { animation: scenefloat 6s ease-in-out infinite; }
 @keyframes scenefloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.scene-video { opacity: 0.92; }
+/* Floating hologram cards — CSS only, no WebGL. Gentle float + a holographic
+   sheen sweep + a small pointer tilt (fine pointers only). Fully static
+   under prefers-reduced-motion (see the media query at the bottom). */
+.card.holo { position: relative; overflow: hidden; animation: holofloat 7s ease-in-out infinite; }
+.grid > .card.holo:nth-child(2n) { animation-delay: -2.3s; }
+.grid > .card.holo:nth-child(3n) { animation-delay: -4.1s; }
+.grid > .card.holo:nth-child(4n) { animation-delay: -1.2s; }
+.card.holo::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(0,242,254,0.10) 45%, rgba(139,92,246,0.12) 55%, transparent 70%);
+  transform: translateX(-130%);
+}
+.card.holo:hover { animation-play-state: paused; }
+.card.holo:hover::after { transform: translateX(130%); transition: transform 1.1s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .card.holo:hover { transform: perspective(700px) rotateX(1.2deg) rotateY(-1.2deg) translateY(-4px); }
+}
+@keyframes holofloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+/* Imagery honesty chips — a business's own uploaded photo/logo vs a built-in scene. */
+.chip { font-size: 11px; font-weight: 700; letter-spacing: 0.3px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); display: inline-block; }
+.chip.own { color: #6ee7b7; border-color: rgba(52,211,153,0.6); }
+.chip.builtin { color: var(--muted); }
+.section-banner {
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 12px 0;
+  background: linear-gradient(120deg, rgba(0,242,254,0.12), rgba(139,92,246,0.14), rgba(232,178,58,0.10));
+}
 .qrbox { background: #fff; border-radius: 12px; padding: 10px; width: 216px; max-width: 100%; }
 .qrbox svg { width: 100%; height: auto; display: block; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
@@ -113,5 +140,7 @@ table.tbl th, table.tbl td { border-bottom: 1px solid var(--line); padding: 8px 
 .mapcell.hot { border-color: var(--gold); background: rgba(232,178,58,0.08); }
 footer.foot { border-top: 1px solid var(--line); margin-top: 30px; padding: 18px 16px; color: var(--muted); font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
-  .core, .scene-anim, .scene-bar span { animation: none; }
+  .core, .scene-anim, .scene-bar span, .card.holo { animation: none; }
+  .card.holo::after { display: none; }
+  .card.holo:hover { transform: none; }
 }

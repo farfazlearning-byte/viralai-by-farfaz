@@ -24,6 +24,7 @@ export function DesignScene({
   business,
   lang,
   mediaUrl,
+  mediaKind,
 }: {
   design: DesignDef;
   headline: string;
@@ -31,6 +32,7 @@ export function DesignScene({
   business: string;
   lang: Lang;
   mediaUrl?: string;
+  mediaKind?: string;
 }) {
   const [a, b, accent] = design.palette;
   const ratio = design.size === "9:16" ? "9/16" : design.size === "16:9" ? "16/9" : design.size === "4:5" ? "4/5" : "1/1";
@@ -40,7 +42,10 @@ export function DesignScene({
       className={`scene kind-${design.kind} ${design.kind === "animated" || design.kind === "video-style" || design.kind === "cinematic" ? "scene-anim" : ""}`}
       style={{ aspectRatio: ratio, background: `linear-gradient(150deg, ${a}, ${b})`, color: design.theme === "light" ? "#111" : "#fff" }}
     >
-      {mediaUrl ? (
+      {mediaUrl && mediaKind === "video" ? (
+        // A placed video PLAYS inside the design, replacing the built-in scene.
+        <video src={mediaUrl} className="scene-media scene-video" autoPlay muted loop playsInline preload="auto" />
+      ) : mediaUrl && mediaKind !== "audio" ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={mediaUrl} alt="" className="scene-media" />
       ) : null}

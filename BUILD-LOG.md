@@ -63,6 +63,86 @@ password ever collected.
   `POST /api/auth` all return the honest `503 SETUP_PENDING`
   ("Database is being set up.") instead of crashing.
 
+## Parity fold-in — hosted edition's newest fixes (2026-11-07, second push)
+
+Folded in from the Muse-hosted edition's post-launch fixes, implemented
+natively in this codebase (no artifact-runtime workarounds ported):
+
+1. **Upload type auto-detect (My Media).** The page detects the media kind
+   from the chosen file itself (MIME type first, extension fallback). If the
+   file's real kind differs from the File-type control, the type switches
+   automatically with a plain EN+தமிழ் notice; a "Logo" pick stands only for
+   real image files (the logo flag is ignored for non-images). The file
+   picker's `accept` filter follows the selected kind. The upload now sends
+   the API's JSON contract (the old page posted FormData the API could not
+   parse, so UI uploads failed) with reading/uploading phases; after ANY
+   failure the form fully resets for an immediate retry, and errors are
+   mapped to plain bilingual sentences — raw status codes/JSON are never
+   shown (client-side sanitiser as a backstop). Server-side, the media API
+   also corrects the kind from the file's own content type and returns only
+   bilingual human error sentences.
+2. **Video playback chain.** (a) My Media rows already rendered a real
+   `<video controls>` from the stored Blob URL — kept, hardened with
+   `playsInline`/`preload`. (b) `DesignScene` previously rendered ANY placed
+   media as an `<img>`, so a placed video could never play — it now renders
+   a real autoplaying muted looping `<video>` for video media, replacing
+   the built-in scene in the Studio preview and everywhere the scene is
+   used. (c) The creatives GET now LEFT JOINs the media table and returns
+   the resolved `media_url`/`media_kind` (plus logo/audio URLs), so a saved
+   creative cannot silently lose its media the way the hosted edition did;
+   the Studio's creative library renders each saved creative as a live
+   scene — placed videos play in the card. (d) **Export & Share did not
+   exist in this edition at all** — built `src/components/ExportShare.tsx`:
+   canvas export at 1:1 1080×1080, 9:16 1080×1920, 16:9 1920×1080,
+   4:5 1080×1350 (PNG/JPEG); when the composition includes the member's own
+   video, a real video export records that same video element with the
+   design + watermark drawn over it, named honestly by the format the
+   browser's recorder actually produced (MP4 or WebM); share = device share
+   sheet with the file, or download fallback — never a fake "posted" state;
+   watermark "ViralAI by FARFAZ" burned into every export, forced ON for
+   Free accounts, Premium may toggle per export (rule stated EN+TA in the
+   panel). If the media's storage blocks canvas reads (tainted canvas), the
+   panel says so honestly and points to the My Media original.
+3. **Session persistence.** Verified first: the session cookie was already
+   a persistent httpOnly 30-day cookie (hashed-token server sessions), so
+   sign-in already survives browser close. Added the missing control: a
+   "Keep me signed in on this device" checkbox on the auth form, ON by
+   default — unticking issues a browser-session cookie instead. Added the
+   missing autocomplete attributes (`name`, `username`/`email`;
+   `current-password`/`new-password` were already correct). The app never
+   stores a raw password.
+4. **My Media row actions + next steps.** Every file row now has
+   "Use in Studio"; video rows also get "Make a video ad" (opens a free
+   9:16 video-style design with the video placed). The Studio shows a
+   placed-confirmation next-step strip, and My Media shows a next-step
+   strip after a successful upload ("Use in Studio → words → Save →
+   Export & Share"), EN+TA.
+5. **Floating hologram cards + imagery chips.** `.card.holo` in the global
+   stylesheet: gentle staggered CSS float, holographic sheen sweep on
+   hover, small pointer tilt on fine pointers only, `animation-play-state`
+   paused on hover — CSS only, no WebGL, fully static under
+   `prefers-reduced-motion`. Applied to Library, Showcase, Stores,
+   My Media, Studio creative library and the dashboard KPI cards. Product
+   cards are chipped "Shop's own photo" when the store uploaded its own
+   media photo, else "Built-in illustration" (EN+TA) — no fake imagery;
+   the Marketplace header carries a scene banner stating the chip rule.
+   Store logos use the same uploaded-media URL treatment as product photos
+   (stores have no separate logo field in this edition — the product photo
+   IS the store's uploaded media, resolved via the same media join).
+
+- **Not applicable here:** the hosted edition's chunked-upload/resume and
+  its localStorage/sessionStorage session workaround are artifact-runtime
+  fixes; this edition uploads in one JSON request to its own API and uses
+  real server cookies, so neither was ported. No migration was needed (the
+  creatives `data` JSONB column and all media columns already exist).
+- **Verification (2026-11-07, local, no database):** `npx tsc --noEmit`
+  clean; `npm run build` clean (all routes generated); production-server
+  smoke test with no env — landing 200, `/auth` 200, manifest 200, and
+  `/api/public`, `/api/bootstrap`, `POST /api/auth` all return the honest
+  `503 SETUP_PENDING`. Database-backed flows (including a live Blob upload
+  → playback → export round-trip) still run first at Stage 3 on the
+  owner's Vercel deployment, as before.
+
 ## Known approximations / incompletes
 - The Library's category-fitted shelf uses a simple deterministic pick
   (every 97th design, max 8) rather than a curated category→family mapping;

@@ -50,17 +50,17 @@ export default function Dashboard() {
 
       <h2>{ta ? "உங்கள் உண்மையான எண்ணிக்கைகள்" : "Your real numbers"}</h2>
       <div className="grid">
-        <div className="card"><div className="kpi">{c.campaigns}</div><p className="muted">{ta ? "பிரச்சாரங்கள்" : "Campaigns"}</p><Link className="btn small" href="/app/campaigns">{ta ? "திற" : "Open"}</Link></div>
-        <div className="card"><div className="kpi">{c.creatives}</div><p className="muted">{ta ? "சேமித்த designs" : "Saved designs"}</p><Link className="btn small" href="/app/studio">{ta ? "திற" : "Open"}</Link></div>
-        <div className="card"><div className="kpi">{c.stores}</div><p className="muted">{ta ? "கடைகள்" : "Stores"}</p><Link className="btn small" href="/app/stores">{ta ? "திற" : "Open"}</Link></div>
+        <div className="card holo"><div className="kpi">{c.campaigns}</div><p className="muted">{ta ? "பிரச்சாரங்கள்" : "Campaigns"}</p><Link className="btn small" href="/app/campaigns">{ta ? "திற" : "Open"}</Link></div>
+        <div className="card holo"><div className="kpi">{c.creatives}</div><p className="muted">{ta ? "சேமித்த designs" : "Saved designs"}</p><Link className="btn small" href="/app/studio">{ta ? "திற" : "Open"}</Link></div>
+        <div className="card holo"><div className="kpi">{c.stores}</div><p className="muted">{ta ? "கடைகள்" : "Stores"}</p><Link className="btn small" href="/app/stores">{ta ? "திற" : "Open"}</Link></div>
       </div>
 
       <h2>{ta ? "திட்டமிடல் வழிகாட்டுதல்" : "Planning guidance"} <Badge kind="sim" lang={lang} /></h2>
       <p className="muted small">{ta ? "இந்த எண்கள் உருவகப்படுத்திய வழிகாட்டுதல் — உண்மையான விளம்பர முடிவுகள் அல்ல. உண்மையான தளங்கள் இணையும்போது உண்மையான எண்கள் வரும்." : "These figures are simulated guidance — not real ad results. Real numbers arrive when real platforms are connected."}</p>
       <div className="grid">
-        <div className="card"><div className="kpi">{reach.toLocaleString()}</div><p className="muted">{ta ? "மதிப்பிட்ட அணுகல்" : "Estimated reach"} <Badge kind="sim" lang={lang} /></p></div>
-        <div className="card"><div className="kpi">{clicks.toLocaleString()}</div><p className="muted">{ta ? "மதிப்பிட்ட கிளிக்குகள்" : "Estimated clicks"} <Badge kind="sim" lang={lang} /></p></div>
-        <div className="card"><div className="kpi">{roas}×</div><p className="muted">ROAS <Badge kind="sim" lang={lang} /></p></div>
+        <div className="card holo"><div className="kpi">{reach.toLocaleString()}</div><p className="muted">{ta ? "மதிப்பிட்ட அணுகல்" : "Estimated reach"} <Badge kind="sim" lang={lang} /></p></div>
+        <div className="card holo"><div className="kpi">{clicks.toLocaleString()}</div><p className="muted">{ta ? "மதிப்பிட்ட கிளிக்குகள்" : "Estimated clicks"} <Badge kind="sim" lang={lang} /></p></div>
+        <div className="card holo"><div className="kpi">{roas}×</div><p className="muted">ROAS <Badge kind="sim" lang={lang} /></p></div>
       </div>
 
       <div className="card">

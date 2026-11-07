@@ -39,7 +39,7 @@ export const POST = handler(async (req: Request) => {
     if (user.suspended) {
       return bad("This account is suspended. Please contact the owner. / இந்தக் கணக்கு இடைநிறுத்தப்பட்டுள்ளது.", 403);
     }
-    await createSession(user.id);
+    await createSession(user.id, b.keepSignedIn !== false);
     await logActivity(user.id, "signin", "");
     const me = await currentUser();
     return ok({ user: me, position: me ? await getPosition(me) : null });
@@ -89,7 +89,7 @@ export const POST = handler(async (req: Request) => {
         [userId, n, obj],
       );
     }
-    await createSession(userId);
+    await createSession(userId, b.keepSignedIn !== false);
     await logActivity(userId, "signup", isOwner ? "owner bootstrap" : founderNumber ? `founder #${founderNumber}` : "");
     const me = await currentUser();
     return ok({ user: me, position: me ? await getPosition(me) : null, founderNumber, freeDays });

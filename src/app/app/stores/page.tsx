@@ -75,6 +75,7 @@ export default function Stores() {
     <AppShell>
       <h1>🏪 {ta ? "கடைகள் & Marketplace" : "Stores & Marketplace"}</h1>
       <p className="muted">{ta ? "பணம் வாங்குபவரிடமிருந்து கடைக்கு நேரடியாகச் செல்கிறது (கடையின் இணைப்பு/QR அல்லது COD) — தளம் order பணத்தை ஒருபோதும் வைத்திருக்காது." : "Money goes directly from buyer to store (the store's link/QR or COD) — the platform never holds order money."}</p>
+      <div className="section-banner">🛍️ <b>{ta ? "Marketplace" : "Marketplace"}</b> <span className="small muted">{ta ? "ஒவ்வொரு பொருள் அட்டையிலும் படம் கடையின் சொந்தப் படமா அல்லது உள்ளமை வரைபடமா என்ற குறிப்பு இருக்கும் — பொய் படங்கள் இல்லை." : "Every product card is chipped — the shop's own uploaded photo, or a built-in illustration. No fake imagery."}</span></div>
       <div className="row">
         <button className={`btn small ${!mine ? "primary" : ""}`} onClick={() => setMine(false)}>{ta ? "எல்லா கடைகளும்" : "All stores"}</button>
         <button className={`btn small ${mine ? "primary" : ""}`} onClick={() => setMine(true)}>{ta ? "என் கடைகள்" : "My stores"}</button>
@@ -83,14 +84,17 @@ export default function Stores() {
       {msg && <p className="okbox">{msg}</p>}
 
       {stores.map((s) => (
-        <div key={s.id} className="card">
+        <div key={s.id} className="card holo">
           <h3>{s.name}</h3>
           <p className="small muted">{s.category} · {s.city}, {s.country} · {ta ? "Delivery கட்டணம்:" : "Delivery fee:"} {money(s.delivery_fee_minor, s.currency)}{s.cod_enabled ? " · COD ✓" : ""}</p>
           {s.about_en && <p>{s.about_en}</p>}
           <div className="grid">
             {products.filter((p) => p.store_id === s.id).map((p) => (
-              <div key={p.id} className="card" style={{ margin: 0 }}>
+              <div key={p.id} className="card holo" style={{ margin: 0 }}>
                 {p.photo_url ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.photo_url} alt="" style={{ width: "100%", borderRadius: 10 }} /> : <div style={{ fontSize: 34 }}>🛍️</div>}
+                <p style={{ margin: "6px 0" }}>{p.photo_url
+                  ? <span className="chip own">{ta ? "கடையின் சொந்தப் படம் · Shop's own photo" : "Shop's own photo"}</span>
+                  : <span className="chip builtin">{ta ? "உள்ளமை வரைபடம் · Built-in illustration" : "Built-in illustration"}</span>}</p>
                 <b>{p.name}</b>
                 <p className="small">{money(p.price_minor, p.currency)} · {p.in_stock && p.stock > 0 ? (ta ? "இருப்பு உள்ளது" : "In stock") : (ta ? "இருப்பு இல்லை" : "Out of stock")}</p>
                 {p.description_en && <p className="small muted">{p.description_en}</p>}
