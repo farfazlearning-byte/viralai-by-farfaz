@@ -157,3 +157,25 @@ natively in this codebase (no artifact-runtime workarounds ported):
   were NOT re-run locally because no Neon database exists yet; they run at
   Stage 3 on the owner's Vercel deployment. The same flows were verified
   end-to-end in the Muse-hosted build this edition mirrors.
+
+## FIX — session check endpoint (2026-11-07, third push)
+
+- **Bug (audit F1, critical):** the client shell's `useMe()` checks the
+  session with `GET /api/auth`, but `src/app/api/auth/route.ts` exported
+  only POST — the GET returned **405**, the client treated every visitor
+  as logged out forever, and the member area was unreachable ("Please
+  sign in first" even immediately after a successful sign-in; Owner
+  Control rejected the owner; tab navigation never rendered).
+- **Fix:** added a `GET` handler to the same route returning exactly the
+  payload the client already parses — the same `{user, position}` shape
+  as the sign-in/sign-up POST, built from the existing `currentUser()`
+  helper. Signed out returns HTTP 200 with `user: null` (a normal state,
+  not an error), so the client helper neither throws nor files an Error
+  Inbox report per page load. No client change, no new tables, no
+  migration.
+- **Verification (2026-11-07, local, no database):** `npx tsc --noEmit`
+  clean; `npm run build` clean; no-env production-server smoke test
+  unchanged (landing/`/auth`/manifest 200; `/api/public`,
+  `/api/bootstrap`, `POST /api/auth` — and now `GET /api/auth` too —
+  return the honest `503 SETUP_PENDING`). Live post-deploy check of the
+  logged-out GET is recorded with the push.

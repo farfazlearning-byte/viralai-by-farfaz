@@ -8,6 +8,18 @@ import { randomBytes } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
+/** GET /api/auth — session check used by the client shell (`useMe()` in
+ *  Shell.tsx) on every page. Returns the SAME {user, position} payload as a
+ *  successful sign-in/sign-up POST. Signed out is a normal state, not an
+ *  error: HTTP 200 with `user: null`, so the client's `api()` helper does
+ *  not throw (and does not file an Error Inbox report) on every page load.
+ *  Without this handler the route returned 405 and the shell treated every
+ *  visitor — including a just-signed-in owner — as logged out forever. */
+export const GET = handler(async () => {
+  const me = await currentUser();
+  return ok({ user: me, position: me ? await getPosition(me) : null });
+});
+
 function inviteCode(userCount: number): string {
   return `VIRAL-${userCount + 1}-${randomBytes(2).toString("hex").toUpperCase()}`;
 }
