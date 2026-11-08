@@ -179,3 +179,49 @@ natively in this codebase (no artifact-runtime workarounds ported):
   `/api/bootstrap`, `POST /api/auth` — and now `GET /api/auth` too —
   return the honest `503 SETUP_PENDING`). Live post-deploy check of the
   logged-out GET is recorded with the push.
+
+## Store Owner Dashboard + buyer→store contact (2026-11-08, fourth push)
+
+Owner-ordered from his Stores-page screenshot: store owners need their OWN
+dashboard — their products with image + price, more for store people and
+delivery people, and a clear way for buyers to contact the store.
+
+- **New page `/app/store-dashboard`** ("My Store · என் கடை"; tab in the nav
+  and linked from the Stores page): my stores; per store its products with
+  photo (existing media join; "Shop's own photo" / "Built-in illustration"
+  chips) and **inline price + stock edit** through the existing
+  `updateProduct` action; orders received with buyer name/phone/address
+  visible ONLY to that order's seller (rule unchanged), status timeline +
+  the seller's existing status/payment controls; **sales totals computed
+  server-side from stored orders, grouped by status** (headline figure
+  excludes cancelled, labelled as totals from orders recorded in the
+  system); low-stock shelf (stock ≤ 3) from real rows. Honest empty
+  states throughout.
+- **Delivery section on the same dashboard** for registered delivery
+  partners: claimed deliveries with step controls, per-delivery fee, and
+  completed-count + fees-earned totals from real rows (same data as
+  `/api/delivery`). Non-partners see an honest "register first" prompt.
+- **Buyer → store contact:** a "Contact store" box on every other person's
+  store card records an enquiry (new table `store_enquiries`, migration
+  **0008**) and notifies the seller; the seller reads enquiries in the
+  dashboard; buyers see their sent messages in My Orders and in the
+  dashboard. Labelled honestly EN+TA as a recorded message the seller
+  reads in their dashboard — NOT live chat, no fake messaging. (This
+  edition had no vendor lead/enquiry store to reuse — `/api/partners` is
+  the programme directory — so the smallest stored enquiry was added.)
+- **New API `GET /api/store-dashboard`** aggregates all of the above from
+  stored rows. Until migration 0008 has been run it returns
+  `enquiriesReady: false` and the UI shows a bilingual "being set up"
+  note instead of erroring; `POST /api/stores` action `contactStore`
+  likewise returns a bilingual setup message until the table exists.
+- **Production step (owner, one small paste):** run
+  `migrations/0008_store_enquiries.sql` once in the Neon SQL Editor.
+  Everything else in this push works without it; only store messages wait.
+- **Verification (2026-11-08, local, no database):** `npx tsc --noEmit`
+  clean; `npm run build` clean (new routes `/app/store-dashboard` and
+  `/api/store-dashboard` generated); no-env production smoke — `/`,
+  `/auth`, `/app/store-dashboard`, manifest 200; `/api/public`,
+  `/api/bootstrap`, `/api/store-dashboard`, `/api/stores` and POST
+  `contactStore` all return the honest `503 SETUP_PENDING`. Live
+  read-only verification is recorded with the push; no accounts or stores
+  were created on production.

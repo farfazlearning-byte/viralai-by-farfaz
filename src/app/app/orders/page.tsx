@@ -9,6 +9,7 @@ interface Order {
   buyer_name: string; buyer_phone: string; buyer_address: string;
   buyer_marked_paid: boolean; seller_confirmed_payment: boolean; delivery_fee_minor: number; store_payment_link?: string;
 }
+interface Enquiry { id: number; store_name: string; message: string; created_at: string }
 const STEPS = ["placed", "confirmed", "packed", "shipped", "picked_up", "out_for_delivery", "delivered"];
 
 export default function Orders() {
@@ -16,10 +17,13 @@ export default function Orders() {
   const ta = lang === "ta";
   const [asBuyer, setAsBuyer] = useState<Order[]>([]);
   const [asSeller, setAsSeller] = useState<Order[]>([]);
+  const [sentEnq, setSentEnq] = useState<Enquiry[]>([]);
   async function refresh() {
     const d = await api("/api/orders").catch(() => ({ asBuyer: [], asSeller: [] }));
     setAsBuyer((d.asBuyer as Order[]) ?? []);
     setAsSeller((d.asSeller as Order[]) ?? []);
+    const dash = await api("/api/store-dashboard").catch(() => ({} as Record<string, unknown>));
+    setSentEnq((dash.enquiriesSent as Enquiry[]) ?? []);
   }
   useEffect(() => { refresh(); }, []);
   async function act(action: string, id: number, extra: Record<string, unknown> = {}) {
@@ -56,6 +60,18 @@ export default function Orders() {
           </div>
         </div>
       ))}
+      {sentEnq.length > 0 && (
+        <>
+          <h2>{ta ? "நான் கடைகளுக்கு அனுப்பிய செய்திகள்" : "Messages I sent to stores"}</h2>
+          <p className="muted small">{ta ? "பதிவு செய்யப்பட்ட செய்திகள் — கடை அதன் Dashboard-இல் படிக்கும். நேரடி chat அல்ல." : "Recorded messages — the store reads them in its dashboard. Not live chat."}</p>
+          {sentEnq.map((e) => (
+            <div key={e.id} className="card">
+              <b>{e.store_name}</b> <span className="small muted">· {new Date(e.created_at).toLocaleString(ta ? "ta-IN" : "en-GB")}</span>
+              <p style={{ margin: "6px 0" }}>{e.message}</p>
+            </div>
+          ))}
+        </>
+      )}
       <h2>{ta ? "என் கடைக்கு வந்தவை" : "Orders to my stores"}</h2>
       {asSeller.length === 0 && <p className="muted">{ta ? "இன்னும் order இல்லை." : "No orders yet."}</p>}
       {asSeller.map((o) => (

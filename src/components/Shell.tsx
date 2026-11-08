@@ -23,6 +23,7 @@ const TABS: Array<{ href: string; en: string; ta: string; ownerOnly?: boolean }>
   { href: "/app/showcase", en: "Our Showcase", ta: "நம்முடைய விளம்பரங்கள்" },
   { href: "/app/explore", en: "Explore", ta: "ஆராய்க" },
   { href: "/app/stores", en: "Stores", ta: "கடைகள்" },
+  { href: "/app/store-dashboard", en: "My Store", ta: "என் கடை" },
   { href: "/app/orders", en: "My Orders", ta: "என் Order-கள்" },
   { href: "/app/delivery", en: "Delivery", ta: "Delivery" },
   { href: "/app/teams", en: "Teams", ta: "அணிகள்" },

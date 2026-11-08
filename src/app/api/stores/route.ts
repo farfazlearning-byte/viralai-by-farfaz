@@ -1,6 +1,6 @@
 import { handler, ok, bad, body, str, num } from "@/lib/api";
 import { q, q1 } from "@/lib/db";
-import { requireUser, logActivity } from "@/lib/auth";
+import { requireUser, logActivity, notify } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +77,30 @@ export const POST = handler(async (req: Request) => {
 
   if (action === "deleteProduct") {
     await q(`DELETE FROM products WHERE id=$1 AND user_id=$2`, [Number(b.id), user.id]);
+    return ok({});
+  }
+
+  if (action === "contactStore") {
+    // Buyer → store contact: a RECORDED enquiry the seller reads in the
+    // My Store Dashboard. Not chat, not real-time — labelled so in the UI.
+    const storeId = Number(b.storeId);
+    const message = str(b.message, 1000);
+    if (!message) return bad("Write a message first. / முதலில் ஒரு செய்தி எழுதுங்கள்.", 400);
+    const store = await q1<{ id: number; user_id: number; name: string; suspended: boolean }>(
+      `SELECT id, user_id, name, suspended FROM stores WHERE id=$1`, [storeId]);
+    if (!store || store.suspended) return bad("Store not available. / கடை கிடைக்கவில்லை.", 404);
+    if (store.user_id === user.id) return bad("This is your own store. / இது உங்கள் சொந்தக் கடை.", 400);
+    try {
+      await q(`INSERT INTO store_enquiries (store_id, seller_id, buyer_id, message) VALUES ($1,$2,$3,$4)`,
+        [storeId, store.user_id, user.id, message]);
+    } catch {
+      return bad("Store messages are being set up — please try again soon. / கடைச் செய்திகள் அமைக்கப்படுகிறது — சிறிது நேரத்தில் மீண்டும் முயற்சிக்கவும்.", 503);
+    }
+    await notify(store.user_id, "store_enquiry",
+      `New message for your store "${store.name}" — read it in My Store Dashboard.`,
+      `உங்கள் கடை "${store.name}"-க்குப் புதிய செய்தி — என் கடை Dashboard-இல் படியுங்கள்.`,
+      "/app/store-dashboard");
+    await logActivity(user.id, "store_enquiry", store.name);
     return ok({});
   }
 

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { AppShell, useLang } from "@/components/Shell";
+import Link from "next/link";
+import { AppShell, useLang, useMe } from "@/components/Shell";
 import { Field, ErrBox } from "@/components/ui";
 import { api, money, clientKey } from "@/lib/client";
 
@@ -10,6 +11,7 @@ interface Product { id: number; store_id: number; name: string; price_minor: num
 export default function Stores() {
   const [lang] = useLang();
   const ta = lang === "ta";
+  const { me } = useMe();
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [mine, setMine] = useState(false);
@@ -19,6 +21,8 @@ export default function Stores() {
   const [form, setForm] = useState({ name: "", category: "", paymentLink: "", cod: true, fee: "" });
   const [prodForm, setProdForm] = useState({ storeId: "", name: "", price: "", desc: "", stock: "10" });
   const [checkout, setCheckout] = useState({ name: "", phone: "", address: "", payMethod: "cod", delivery: true });
+  const [contact, setContact] = useState<Record<number, string>>({});
+  const [contactSent, setContactSent] = useState<Record<number, boolean>>({});
   const [myKey] = useState(clientKey());
 
   async function refresh() {
@@ -53,6 +57,14 @@ export default function Stores() {
       refresh();
     } catch (e) { setErr(e instanceof Error ? e.message : "Error"); }
   }
+  async function contactStore(storeId: number) {
+    setErr("");
+    try {
+      await api("/api/stores", { method: "POST", body: JSON.stringify({ action: "contactStore", storeId, message: contact[storeId] ?? "" }) });
+      setContactSent({ ...contactSent, [storeId]: true });
+      setContact({ ...contact, [storeId]: "" });
+    } catch (e) { setErr(e instanceof Error ? e.message : "Error"); }
+  }
   async function placeOrder() {
     if (!cartStoreId) return;
     setErr("");
@@ -79,6 +91,7 @@ export default function Stores() {
       <div className="row">
         <button className={`btn small ${!mine ? "primary" : ""}`} onClick={() => setMine(false)}>{ta ? "எல்லா கடைகளும்" : "All stores"}</button>
         <button className={`btn small ${mine ? "primary" : ""}`} onClick={() => setMine(true)}>{ta ? "என் கடைகள்" : "My stores"}</button>
+        <Link className="btn small" href="/app/store-dashboard">🏪 {ta ? "என் கடை Dashboard" : "My Store Dashboard"}</Link>
       </div>
       <ErrBox msg={err} />
       {msg && <p className="okbox">{msg}</p>}
@@ -88,6 +101,18 @@ export default function Stores() {
           <h3>{s.name}</h3>
           <p className="small muted">{s.category} · {s.city}, {s.country} · {ta ? "Delivery கட்டணம்:" : "Delivery fee:"} {money(s.delivery_fee_minor, s.currency)}{s.cod_enabled ? " · COD ✓" : ""}</p>
           {s.about_en && <p>{s.about_en}</p>}
+          {me && s.user_id !== me.id && (
+            <div style={{ margin: "10px 0" }}>
+              <Field label={ta ? "கடைக்குச் செய்தி அனுப்பு" : "Message this store"}>
+                <textarea value={contact[s.id] ?? ""} onChange={(e) => setContact({ ...contact, [s.id]: e.target.value })} rows={2} placeholder={ta ? "உங்கள் கேள்வியை எழுதுங்கள்…" : "Write your question…"} />
+              </Field>
+              <button className="btn small" onClick={() => contactStore(s.id)}>{ta ? "✉️ கடையைத் தொடர்பு கொள்" : "✉️ Contact store"}</button>
+              {contactSent[s.id] && <span className="small" style={{ marginLeft: 8 }}>✓ {ta ? "அனுப்பப்பட்டது" : "Sent"}</span>}
+              <p className="small muted">{ta
+                ? "இது பதிவு செய்யப்படும் செய்தி — கடை உரிமையாளர் தன் Dashboard-இல் படிப்பார். நேரடி chat அல்ல."
+                : "This is a recorded message — the store owner reads it in their dashboard. Not live chat."}</p>
+            </div>
+          )}
           <div className="grid">
             {products.filter((p) => p.store_id === s.id).map((p) => (
               <div key={p.id} className="card holo" style={{ margin: 0 }}>
