@@ -24,6 +24,39 @@ function inviteCode(userCount: number): string {
   return `VIRAL-${userCount + 1}-${randomBytes(2).toString("hex").toUpperCase()}`;
 }
 
+/** Atomically claim the next founder slot from the `founder_counter` row in
+ *  settings (seeded by migration 0009). ONE UPDATE ... RETURNING statement:
+ *  Postgres holds the row lock for the statement, so parallel sign-ups are
+ *  serialised here and can NEVER receive the same number — the previous
+ *  COUNT(*)+1 read-then-insert handed identical Founder numbers to many
+ *  accounts under a sign-up burst (load test: 408 duplicates in 1,000;
+ *  local reproduction: 50 parallel sign-ups -> only 39 distinct numbers).
+ *  Slot 1 is the first account ever (Owner bootstrap). Returns null only if
+ *  the counter cannot be established at all. If the counter row is missing
+ *  (migration not run yet), it is initialised from the highest founder
+ *  number already issued and the claim is retried once. A slot claimed by a
+ *  sign-up that then fails is simply skipped — numbers stay unique, which
+ *  is what matters; they need not be gapless. */
+async function claimFounderSlot(): Promise<number | null> {
+  const claim = () =>
+    q1<{ claimed: number }>(
+      `UPDATE settings
+          SET value = jsonb_set(value, '{next}', to_jsonb((value->>'next')::int + 1))
+        WHERE key = 'founder_counter'
+        RETURNING (value->>'next')::int - 1 AS claimed`,
+    );
+  let row = await claim();
+  if (!row) {
+    await q(
+      `INSERT INTO settings (key, value)
+       SELECT 'founder_counter', jsonb_build_object('next', COALESCE(MAX(founder_number), 0) + 1) FROM users
+       ON CONFLICT (key) DO NOTHING`,
+    );
+    row = await claim();
+  }
+  return row?.claimed ?? null;
+}
+
 /** POST /api/auth {action: signup|signin|signout}. Sign-up: owner bootstrap —
  *  the FIRST account ever created becomes Owner and Founder #1. Founders
  *  (first 1,000 accounts) get 90 free Premium days; a valid invite code adds
@@ -70,10 +103,11 @@ export const POST = handler(async (req: Request) => {
     const existing = await q1<{ id: number }>(`SELECT id FROM users WHERE email = $1`, [email]);
     if (existing) return bad("An account with this email already exists — sign in instead. / இந்த மின்னஞ்சலில் கணக்கு ஏற்கனவே உள்ளது — உள்நுழையுங்கள்.", 409);
 
-    const countRow = await q1<{ n: string }>(`SELECT COUNT(*)::text AS n FROM users`);
-    const total = parseInt(countRow?.n ?? "0", 10);
-    const isOwner = total === 0;
-    const founderNumber = total < 1000 ? total + 1 : null;
+    // Atomic claim — replaces the racy COUNT(*)+1 (see claimFounderSlot).
+    // Slot 1 = first account ever = Owner; slots 1..1000 = Founders.
+    const slot = await claimFounderSlot();
+    const isOwner = slot === 1;
+    const founderNumber = slot !== null && slot <= 1000 ? slot : null;
     let referredBy: number | null = null;
     if (ref) {
       const sharer = await q1<{ id: number }>(`SELECT id FROM users WHERE invite_code = $1`, [ref]);
@@ -84,7 +118,7 @@ export const POST = handler(async (req: Request) => {
     const rows = await q<{ id: number }>(
       `INSERT INTO users (name, email, password_hash, country, city, is_owner, founder_number, invite_code, referred_by, premium_free_until)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [name, email, hashPassword(password), country, city, isOwner, founderNumber, inviteCode(total), referredBy, freeUntil],
+      [name, email, hashPassword(password), country, city, isOwner, founderNumber, slot !== null ? inviteCode(slot - 1) : `VIRAL-${randomBytes(3).toString("hex").toUpperCase()}`, referredBy, freeUntil],
     );
     const userId = rows[0].id;
     const samples: Array<[string, string]> = [

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { AppShell, useLang } from "@/components/Shell";
+import { ErrBox } from "@/components/ui";
 import { api } from "@/lib/client";
 
 interface Pos { level: string; sourceLabel: string; premiumViaFreeDays: boolean; currentEndsAt: string | null }
@@ -17,10 +18,24 @@ export default function Strategy() {
   const [pos, setPos] = useState<Pos>({ level: "free", sourceLabel: "FREE", premiumViaFreeDays: false, currentEndsAt: null });
   const [campaigns, setCampaigns] = useState<Array<{ id: number; name: string; category: string; status: string }>>([]);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
 
+  // /api/account returns the position in the server contract
+  // {tier, sourceLabel, viaFreeDays, premiumFreeUntil} — this page used to
+  // read it as {level, premiumViaFreeDays, currentEndsAt} and render
+  // pos.level.toUpperCase() on undefined: a TypeError the moment the data
+  // landed, which froze navigation. Map the real contract, and surface
+  // load failures in an error box instead of swallowing them.
   useEffect(() => {
-    api("/api/account").then((d) => setPos(d.position as Pos)).catch(() => {});
-    api("/api/campaigns").then((d) => setCampaigns((d.campaigns as typeof campaigns) ?? [])).catch(() => {});
+    api("/api/account")
+      .then((d) => {
+        const p = d.position as { tier: string; sourceLabel: string; viaFreeDays: boolean; premiumFreeUntil: string | null };
+        setPos({ level: p.tier, sourceLabel: p.sourceLabel, premiumViaFreeDays: p.viaFreeDays, currentEndsAt: p.premiumFreeUntil });
+      })
+      .catch((e) => setErr(e instanceof Error ? e.message : "Error"));
+    api("/api/campaigns")
+      .then((d) => setCampaigns((d.campaigns as typeof campaigns) ?? []))
+      .catch((e) => setErr(e instanceof Error ? e.message : "Error"));
   }, []);
 
   async function prepareDrafts() {
@@ -30,7 +45,11 @@ export default function Strategy() {
       { name: ta ? "Autopilot வரைவு 3 — பண்டிகை" : "Autopilot draft 3 — Festival push", objective: "awareness" },
     ];
     for (const idea of ideas) {
-      await api("/api/campaigns", { method: "POST", body: JSON.stringify(idea) }).catch(() => {});
+      // The campaigns API requires action:"create" — without it the POST
+      // fell through to the by-id handlers and 404'd, while this page still
+      // showed a success message. Send the real contract; failures surface.
+      await api("/api/campaigns", { method: "POST", body: JSON.stringify({ action: "create", ...idea }) })
+        .catch((e) => setErr(e instanceof Error ? e.message : "Error"));
     }
     setMsg(ta ? "3 வரைவு campaign-கள் தயார் — Campaigns பக்கத்தில் பாருங்கள். எதுவும் வெளியிடப்படவில்லை, செலவிடப்படவில்லை." : "3 draft campaigns prepared — see the Campaigns page. Nothing was published or spent.");
     const d = await api("/api/campaigns").catch(() => ({}) as Record<string, unknown>);
@@ -41,6 +60,7 @@ export default function Strategy() {
   return (
     <AppShell>
       <h1>🧭 {ta ? "என் Strategy" : "My Strategy"}</h1>
+      <ErrBox msg={err} />
       <div className="card">
         <p>{ta ? "உங்கள் நிலை:" : "Your position:"} <b>{pos.level.toUpperCase()}</b> <span className="badge">{pos.sourceLabel}</span>
         {pos.premiumViaFreeDays && <span className="badge free" style={{ marginLeft: 6 }}>Premium (free days)</span>}

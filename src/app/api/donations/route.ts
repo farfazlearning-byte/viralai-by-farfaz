@@ -50,11 +50,12 @@ export const POST = handler(async (req: Request) => {
 
   if (action === "board") {
     const rows = await q(`SELECT * FROM donations ORDER BY created_at DESC LIMIT 200`);
-    const t = await q1<{ confirmed_count: string; confirmed_total: string; pending_count: string; today_total: string; total_total: string; qr_views: string }>(
+    const t = await q1<{ confirmed_count: string; confirmed_total: string; pending_count: string; today_count: string; today_total: string; total_total: string; qr_views: string }>(
       `SELECT
         (SELECT COUNT(*)::text FROM donations WHERE status='confirmed') AS confirmed_count,
         (SELECT COALESCE(SUM(amount_minor),0)::text FROM donations WHERE status='confirmed') AS confirmed_total,
         (SELECT COUNT(*)::text FROM donations WHERE status='pending') AS pending_count,
+        (SELECT COUNT(*)::text FROM donations WHERE status='confirmed' AND created_at >= date_trunc('day', now())) AS today_count,
         (SELECT COALESCE(SUM(amount_minor),0)::text FROM donations WHERE status='confirmed' AND created_at >= date_trunc('day', now())) AS today_total,
         (SELECT COALESCE(SUM(amount_minor),0)::text FROM donations WHERE status='confirmed') AS total_total,
         (SELECT COUNT(*)::text FROM donation_qr_views) AS qr_views`);
@@ -64,6 +65,7 @@ export const POST = handler(async (req: Request) => {
         confirmedCount: Number(t?.confirmed_count ?? 0),
         confirmedTotalMinor: Number(t?.confirmed_total ?? 0),
         pendingCount: Number(t?.pending_count ?? 0),
+        todayCount: Number(t?.today_count ?? 0),
         todayTotalMinor: Number(t?.today_total ?? 0),
         allTimeTotalMinor: Number(t?.total_total ?? 0),
         qrViews: Number(t?.qr_views ?? 0),
@@ -71,7 +73,10 @@ export const POST = handler(async (req: Request) => {
     });
   }
   if (action === "decide") {
-    const approve = b.approve === true;
+    // The Owner Control page sends {confirm: true|false}; accept that field
+    // as well as {approve: ...}. Reading only `approve` turned every
+    // "Confirm" tap into a rejection.
+    const approve = b.approve === true || b.confirm === true;
     await q(`UPDATE donations SET status=$2, decided_at=now() WHERE id=$1 AND status='pending'`, [Number(b.id), approve ? "confirmed" : "rejected"]);
     return ok({});
   }

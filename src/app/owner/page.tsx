@@ -6,7 +6,7 @@ import { api, money } from "@/lib/client";
 
 interface Member { id: number; name: string; email: string; country: string; city: string; is_owner: boolean; founder_number: number | null; suspended: boolean; position: { level: string; sourceLabel: string; premiumViaFreeDays: boolean; currentEndsAt: string | null } }
 interface PayRow { id: number; user_name?: string; user_email?: string; plan: string; amount_minor: number; currency: string; method: string; status: string }
-interface DonRow { id: number; donor_name: string; amount_minor: number; anonymous: boolean; source: string; created_at: string }
+interface DonRow { id: number; donor_name: string; amount_minor: number; anonymous: boolean; source: string; status: string; created_at: string }
 interface Cell { code: string; country: string; countryTa: string; members: number; stores: number; orders: number; paymentRoute: string; paymentStatus: string }
 
 const BOARDS = ["members", "payments", "donations", "exceptions", "health", "map", "showcase", "guardrails", "audit", "connections"] as const;
@@ -39,9 +39,27 @@ export default function OwnerPage() {
   async function load(b: string) {
     setErr("");
     try {
-      if (b === "members") { const d = await api("/api/owner?board=members"); setMembers((d.members as Member[]) ?? []); }
+      // The members board embeds each member's position in the server
+      // contract {tier, sourceLabel, viaFreeDays, premiumFreeUntil}; this
+      // page renders {level, premiumViaFreeDays, currentEndsAt} and used to
+      // call position.level.toUpperCase() on undefined — a TypeError the
+      // moment the board loaded, which froze navigation. Normalise here.
+      if (b === "members") {
+        const d = await api("/api/owner?board=members");
+        const raw = (d.members as Array<Omit<Member, "position"> & { position: { tier: string; sourceLabel: string; viaFreeDays: boolean; premiumFreeUntil: string | null } }>) ?? [];
+        setMembers(raw.map((m) => ({ ...m, position: { level: m.position.tier, sourceLabel: m.position.sourceLabel, premiumViaFreeDays: m.position.viaFreeDays, currentEndsAt: m.position.premiumFreeUntil } })));
+      }
       if (b === "payments") { const d = await api("/api/owner?board=payments"); setPending((d.pending as PayRow[]) ?? []); setDecided((d.decided as PayRow[]) ?? []); setTotals(d.totals as typeof totals); }
-      if (b === "donations") { const d = await api("/api/donations"); setDonBoard(d.board as typeof donBoard); }
+      // The owner donations board is a POST {action:"board"} (owner-only);
+      // a GET returns only the public QR/wall payload, so the board used to
+      // load `undefined` and render nothing. Build the board shape from the
+      // real response: all rows + the pending subset + totals.
+      if (b === "donations") {
+        const d = await api("/api/donations", { method: "POST", body: JSON.stringify({ action: "board" }) });
+        const rows = (d.donations as DonRow[]) ?? [];
+        const t = d.totals as { confirmedCount: number; confirmedTotalMinor: number; pendingCount: number; todayCount?: number; todayTotalMinor: number; qrViews: number };
+        setDonBoard({ donations: rows, pending: rows.filter((r) => r.status === "pending"), totals: { confirmedCount: t.confirmedCount, confirmedTotalMinor: t.confirmedTotalMinor, pendingCount: t.pendingCount, todayCount: t.todayCount ?? 0, todayTotalMinor: t.todayTotalMinor, qrViews: t.qrViews } });
+      }
       if (b === "exceptions") { const d = await api("/api/owner?board=exceptions"); setExceptions(d as unknown as typeof exceptions); }
       if (b === "health") { const d = await api("/api/owner?board=health"); setHealth(d as unknown as typeof health); }
       if (b === "map") { const d = await api("/api/owner?board=map"); setCells((d.cells as Cell[]) ?? []); }

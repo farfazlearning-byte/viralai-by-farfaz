@@ -27,15 +27,46 @@ export default function Plans() {
   const [wallOptIn, setWallOptIn] = useState(false);
   const [anonymous, setAnonymous] = useState(false);
 
+  // The /api/payments contract is: plans as an OBJECT keyed by plan
+  // ({monthly:{priceMinor,payload,svg}, yearly:{...}}), country rows under
+  // `countries`, own payments under `mine`, and NO position (that lives in
+  // /api/account as {tier, viaFreeDays, premiumFreeUntil}). This page used
+  // to cast the plans object to an array and call .map() on it — a
+  // TypeError the moment real data loaded, which froze navigation. Map the
+  // real contract here, and let failures surface in the ErrBox instead of
+  // being swallowed into empty state.
   async function refresh() {
-    const d = await api("/api/payments").catch(() => ({}) as Record<string, unknown>);
-    setPlans((d.plans as Plan[]) ?? []);
-    setRoutes((d.routes as Route[]) ?? []);
-    setPayments((d.myPayments as Payment[]) ?? []);
-    setPosition((d.position as typeof position) ?? position);
-    const don = await api(`/api/donations?amount=${encodeURIComponent(donateAmt || "100")}`).catch(() => ({}) as Record<string, unknown>);
-    setDonateQr((don.qrSvg as string) ?? "");
-    setWall((don.wall as typeof wall) ?? []);
+    try {
+      const d = await api("/api/payments");
+      const rawPlans = (d.plans as Record<string, { priceMinor: number | null; payload: string | null; svg: string | null }>) ?? {};
+      const defs = [
+        { key: "monthly", labelEn: "Monthly · Basic (30 days)", labelTa: "மாதாந்திர · Basic (30 நாட்கள்)" },
+        { key: "yearly", labelEn: "Yearly · High (365 days)", labelTa: "வருடாந்திர · High (365 நாட்கள்)" },
+      ];
+      setPlans(defs.map((def) => {
+        const rp = rawPlans[def.key];
+        return { ...def, priceMinor: rp?.priceMinor ?? null, currency: (d.currency as string) ?? "INR", qrPayload: rp?.payload ?? null, qrSvg: rp?.svg ?? null };
+      }));
+      const rawCountries = (d.countries as Array<Record<string, unknown>>) ?? [];
+      setRoutes(rawCountries.map((c) => ({
+        country: String(c.country ?? ""),
+        route: String(c.route ?? "wire"),
+        status: String(c.status ?? "details_pending"),
+        currency: String(c.currency ?? ""),
+        wireFields: c.wire_account_number
+          ? { bankName: String(c.wire_bank_name ?? ""), swift: String(c.wire_swift ?? ""), holderName: String(c.wire_holder_name ?? ""), accountNumber: String(c.wire_account_number ?? ""), clearingCode: String(c.wire_clearing_code ?? ""), referenceNote: String(c.wire_reference_note ?? "") }
+          : null,
+        priceMonthlyMinor: null,
+        priceYearlyMinor: null,
+      })));
+      setPayments((d.mine as Payment[]) ?? []);
+      const acc = await api("/api/account").catch(() => null);
+      const p = acc?.position as { tier: string; sourceLabel: string; viaFreeDays: boolean; premiumFreeUntil: string | null } | undefined;
+      if (p) setPosition({ level: p.tier, sourceLabel: p.sourceLabel, premiumViaFreeDays: p.viaFreeDays, currentEndsAt: p.premiumFreeUntil });
+      const don = await api(`/api/donations?amount=${encodeURIComponent(donateAmt || "100")}`);
+      setDonateQr((don.svg as string) ?? "");
+      setWall(((don.wall as Array<{ donor_name: string; amount_minor: number }>) ?? []).map((w) => ({ name: w.donor_name, amount_minor: w.amount_minor })));
+    } catch (e) { setErr(e instanceof Error ? e.message : "Error"); }
   }
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
 

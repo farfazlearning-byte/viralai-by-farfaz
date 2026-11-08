@@ -225,3 +225,42 @@ delivery people, and a clear way for buyers to contact the store.
   `contactStore` all return the honest `503 SETUP_PENDING`. Live
   read-only verification is recorded with the push; no accounts or stores
   were created on production.
+
+## FIX — Founder-number race + Plans/Strategy/Owner navigation stall (2026-11-08)
+- Founder numbers: sign-up assigned them with a COUNT(*)+1 read-then-insert;
+  parallel sign-ups shared numbers (load test: 408 duplicates in 1,000;
+  local reproduction: 50 parallel sign-ups -> only 39 distinct). Now claimed
+  atomically from a `founder_counter` settings row with a single
+  UPDATE ... RETURNING (src/app/api/auth/route.ts, claimFounderSlot);
+  migration 0009 seeds the counter from MAX(founder_number)+1 and the code
+  self-initialises if the row is missing. Verified on a local throwaway DB:
+  50 parallel sign-ups -> 50 distinct, consecutive numbers, 0 collisions
+  with existing accounts, exactly 1 owner.
+- Navigation stall (owner-reported: tapping Plans / Strategy / Owner
+  Control "did nothing" while signed in as Owner): the three pages were
+  written against a different API contract than the server returns. Plans
+  cast the plans OBJECT to an array and called .map() on it (TypeError the
+  moment real data loaded); Strategy and Owner Control read
+  position.level where the API returns position.tier (TypeError on load);
+  and the app had NO error boundary anywhere, so each throw killed the
+  client navigation silently and the previous page stayed on screen.
+  Signed-out checks never reproduced it because the throwing data only
+  loads for a signed-in user. The pages now map the real contract, data
+  loads fail visibly in a bilingual ErrBox, and a root src/app/error.tsx
+  boundary shows a bilingual recovery card if any render ever throws again.
+- Found in the same audit of those pages: the Owner donations board loaded
+  the public GET payload and stayed permanently blank — it now uses
+  POST {action:"board"} (totals gained todayCount); donations `decide`
+  read only `approve` while the page sends `confirm`, so the owner's
+  "Confirm" tap actually REJECTED donations — both fields are now honoured
+  (verified end-to-end: record -> confirm -> status confirmed); Strategy's
+  Autopilot draft buttons posted to /api/campaigns without
+  action:"create", 404'd and still showed a success message — fixed
+  (verified: 3 drafts created).
+- Verification: npx tsc --noEmit clean; npm run build clean; local
+  throwaway-Postgres end-to-end with an owner + a second account — all
+  three pages return 200 and their render expressions pass against the
+  real API payloads; the exported pages' data flows (payments, donations,
+  campaigns, owner boards) exercised with the owner's session; non-owner
+  /api/owner and the donations board still return 403. Nothing was
+  registered or written on production by this fix.
