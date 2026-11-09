@@ -2,7 +2,7 @@ import { handler, ok } from "@/lib/api";
 import { requireUser, requestOrigin } from "@/lib/auth";
 import { growthStats } from "@/lib/growth";
 import { getPosition } from "@/lib/position";
-import { shareTexts } from "@/lib/client";
+import { shareTexts } from "@/lib/share";
 
 export const dynamic = "force-dynamic";
 

@@ -3,7 +3,7 @@ import { q } from "@/lib/db";
 import { requireUser, requireOwner } from "@/lib/auth";
 import { ensureSeeds } from "@/lib/seed";
 import { HOUSE_ADS } from "@/lib/houseAds";
-import { shareTexts } from "@/lib/client";
+import { shareTexts } from "@/lib/share";
 import { requestOrigin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";

@@ -264,3 +264,56 @@ delivery people, and a clear way for buyers to contact the store.
   campaigns, owner boards) exercised with the owner's session; non-owner
   /api/owner and the donations board still return 403. Nothing was
   registered or written on production by this fix.
+
+## Community Feed + shareTexts server-call fix (2026-11-09)
+- NEW Community Feed (nav "Community · சமூகம்", page /app/community,
+  API /api/community, migration 0010 + server-side self-init in
+  src/lib/community.ts — no manual migration step needed):
+  - A signed-in member publishes one of THEIR OWN saved creatives or one
+    of THEIR OWN My Media videos (title required; caption optional;
+    "Allow others to reuse this design" toggle, default OFF). Ownership
+    is verified server-side against the caller's own rows — publishing
+    another member's creative/media id is rejected (404); a non-video
+    media item is rejected (400). Private media stays private until its
+    owner publishes it.
+  - Feed is newest-first: the design preview (DesignScene, with the
+    creative's placed media playing) or the video itself, the poster's
+    display name + Founder badge, and REAL like/share counts
+    (COUNT(*) over community_likes / community_shares rows — no seeded
+    or simulated engagement anywhere).
+  - Like toggles, one per account, enforced by PRIMARY KEY
+    (post_id, user_id) + delete-then-insert toggle logic.
+  - Share records a real share row and returns EN+TA copy carrying the
+    SHARER's OWN invite code/link (built from the request origin) —
+    never the poster's code, never a shared code (per-person rule).
+  - Reuse: only when the post's allow_reuse is true — "Use this design"
+    opens the Studio with the creative's design loaded as a template
+    (same sessionStorage pattern as the Design Library); video posts
+    place the video in the Studio the same way My Media does. When
+    false, the action is absent and an honest bilingual note says the
+    owner hasn't allowed reuse. Post owners can remove their own posts
+    (others get 403).
+- FOUND FAULT, fixed in the same pass (class fix): GET /api/growth and
+  GET /api/showcase returned 500 for every signed-in user —
+  shareTexts() lived in src/lib/client.ts ("use client") and Next
+  forbids calling a client-module function from a route handler
+  ("Attempted to call shareTexts() from the server…"). The function now
+  lives in server-safe src/lib/share.ts; client.ts re-exports it so
+  client imports are unchanged, and both routes import from
+  "@/lib/share". Verified end-to-end: both routes return 200 and the
+  growth payload's inviteCode matches the caller's own code.
+- Verification (local throwaway Postgres, production build, two real
+  accounts — Reel-18 negative tests included): tsc clean; build clean;
+  no-env smoke: / 200, /app/community 200, APIs honest 503
+  SETUP_PENDING. Publish without a title -> 400 bilingual; publish
+  another member's creative -> 404; publish another member's video ->
+  404; publish an image media item -> 400; valid creative + video
+  publishes -> 200 and render in the feed with poster Founder badge;
+  like -> count 1, like again -> count 0 (toggle returns to original);
+  share -> count 1 and the copy carries the sharer's code, not the
+  poster's; signed-out like/publish/feed -> 401 with no raw errors;
+  unpublish by non-owner -> 403, by owner -> 200. Overflow: the page
+  reuses the fluid .wrap/.grid/.card classes (border-box global, grid
+  minmax(280px,1fr), video width 100%) — checked at source level; no
+  browser probe was available in the build sandbox. Nothing was
+  registered or written on production by these tests.

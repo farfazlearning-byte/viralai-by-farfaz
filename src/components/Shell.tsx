@@ -21,6 +21,7 @@ const TABS: Array<{ href: string; en: string; ta: string; ownerOnly?: boolean }>
   { href: "/app/campaigns", en: "Campaigns", ta: "பிரச்சாரங்கள்" },
   { href: "/app/library", en: "Design Library", ta: "Design நூலகம்" },
   { href: "/app/showcase", en: "Our Showcase", ta: "நம்முடைய விளம்பரங்கள்" },
+  { href: "/app/community", en: "Community", ta: "சமூகம்" },
   { href: "/app/explore", en: "Explore", ta: "ஆராய்க" },
   { href: "/app/stores", en: "Stores", ta: "கடைகள்" },
   { href: "/app/store-dashboard", en: "My Store", ta: "என் கடை" },
