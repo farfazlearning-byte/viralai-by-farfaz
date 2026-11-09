@@ -3,6 +3,7 @@ import { q, q1 } from "@/lib/db";
 import { requireOwner, logActivity } from "@/lib/auth";
 import { getPosition, addPremiumPeriod } from "@/lib/position";
 import { platformSettings, setPlatformSettings } from "@/lib/guard";
+import { ensureCommunityTables } from "@/lib/community";
 import { dbReady } from "@/lib/db";
 import { blobReady } from "@/lib/blob";
 import { COUNTRIES } from "@/lib/registry";
@@ -110,6 +111,23 @@ export const GET = handler(async (req: Request) => {
     return ok({ houseAds: rows });
   }
 
+  if (board === "reports") {
+    // Community post reports (Social Pack). Real rows from
+    // community_reports; open ones first.
+    await ensureCommunityTables();
+    const rows = await q(
+      `SELECT r.id, r.post_id, r.reason, r.status, r.created_at,
+              u.name AS reporter_name, p.title AS post_title,
+              pu.name AS poster_name
+         FROM community_reports r
+         JOIN users u ON u.id = r.user_id
+         JOIN community_posts p ON p.id = r.post_id
+         JOIN users pu ON pu.id = p.user_id
+        ORDER BY (r.status = 'open') DESC, r.created_at DESC
+        LIMIT 100`);
+    return ok({ reports: rows });
+  }
+
   if (board === "guardrails") {
     const settings = (await q1<{ value: { monthlyCapMinor?: number; dailyCapMinor?: number; autoPublish?: boolean; notes?: string } }>(
       `SELECT value FROM settings WHERE key='guardrails'`))?.value ?? {};
@@ -186,6 +204,27 @@ export const POST = handler(async (req: Request) => {
   }
   if (action === "resolveError") {
     await q(`UPDATE error_log SET resolved=true WHERE id=$1`, [Number(b.errorId)]);
+    return ok({});
+  }
+  if (action === "removeReportedPost") {
+    // Owner-only (requireOwner above). Deleting the post cascades to its
+    // likes/comments/shares/saves/reports; its open reports are marked
+    // resolved first so the audit trail keeps the outcome.
+    await ensureCommunityTables();
+    const postId = Number(b.postId);
+    const post = await q1<{ id: number; title: string }>(`SELECT id, title FROM community_posts WHERE id=$1`, [postId]);
+    if (!post) return bad("That post no longer exists.", 404);
+    await q(`UPDATE community_reports SET status='resolved' WHERE post_id=$1 AND status='open'`, [postId]);
+    await q(`DELETE FROM community_posts WHERE id=$1`, [postId]);
+    await audit(owner.id, "community_post_removed", null, `post ${postId}: ${post.title}`);
+    await logActivity(owner.id, "owner_community_remove", `post ${postId}`);
+    return ok({});
+  }
+  if (action === "dismissReport") {
+    await ensureCommunityTables();
+    const reportId = Number(b.reportId);
+    await q(`UPDATE community_reports SET status='dismissed' WHERE id=$1 AND status='open'`, [reportId]);
+    await audit(owner.id, "community_report_dismissed", null, `report ${reportId}`);
     return ok({});
   }
   return bad("Unknown action", 400);

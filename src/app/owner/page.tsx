@@ -9,7 +9,7 @@ interface PayRow { id: number; user_name?: string; user_email?: string; plan: st
 interface DonRow { id: number; donor_name: string; amount_minor: number; anonymous: boolean; source: string; status: string; created_at: string }
 interface Cell { code: string; country: string; countryTa: string; members: number; stores: number; orders: number; paymentRoute: string; paymentStatus: string }
 
-const BOARDS = ["members", "payments", "donations", "exceptions", "health", "map", "showcase", "guardrails", "audit", "connections"] as const;
+const BOARDS = ["members", "payments", "donations", "exceptions", "health", "map", "showcase", "guardrails", "reports", "audit", "connections"] as const;
 
 export default function OwnerPage() {
   const [lang] = useLang();
@@ -33,6 +33,9 @@ export default function OwnerPage() {
   const [countryForm, setCountryForm] = useState({ country: "Canada", bankName: "", swift: "", holderName: "", accountNumber: "", clearingCode: "", referenceNote: "", priceMonthly: "", priceYearly: "" });
   const [grantForm, setGrantForm] = useState<{ userId: number; level: string; preset: string; customDays: string; note: string }>({ userId: 0, level: "basic", preset: "1m", customDays: "", note: "" });
   const [manualDon, setManualDon] = useState({ name: "", amount: "" });
+interface ReportRow { id: number; post_id: number; reason: string; status: string; created_at: string; reporter_name: string; post_title: string; poster_name: string }
+
+  const [reports, setReports] = useState<ReportRow[]>([]);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -66,6 +69,7 @@ export default function OwnerPage() {
       if (b === "showcase") { const d = await api("/api/owner?board=houseads"); setHouseAds((d.houseAds as typeof houseAds) ?? []); }
       if (b === "guardrails") { const d = await api("/api/owner?board=guardrails"); const g = d.guardrails as { monthlyCapMinor?: number; dailyCapMinor?: number; notes?: string }; setGuard({ monthlyCapMinor: g.monthlyCapMinor ?? 0, dailyCapMinor: g.dailyCapMinor ?? 0, notes: g.notes ?? "" }); }
       if (b === "audit") { const d = await api("/api/owner?board=audit"); setAuditRows((d.audit as typeof auditRows) ?? []); }
+      if (b === "reports") { const d = await api("/api/owner?board=reports"); setReports((d.reports as ReportRow[]) ?? []); }
       if (b === "connections") { const d = await api("/api/owner?board=connections"); setConnections((d.connections as typeof connections) ?? []); }
     } catch (e) { setErr(e instanceof Error ? e.message : "Error"); }
   }
@@ -297,6 +301,29 @@ export default function OwnerPage() {
           <Field label={ta ? "குறிப்புகள்" : "Notes"}><input value={guard.notes} onChange={(e) => setGuard({ ...guard, notes: e.target.value })} /></Field>
           <button className="btn primary" onClick={() => post("/api/owner", { action: "guardrails", monthlyCapMinor: guard.monthlyCapMinor, dailyCapMinor: guard.dailyCapMinor, notes: guard.notes }, ta ? "Guardrails சேமிக்கப்பட்டன" : "Guardrails saved")}>{ta ? "சேமி" : "Save"}</button>
         </div>
+      )}
+
+      {board === "reports" && (
+        <>
+          <h3>🚩 {ta ? "சமூகப் பதிவு புகார்கள்" : "Community post reports"}</h3>
+          <p className="small muted">{ta ? "உறுப்பினர்கள் சமூக ஊட்டத்தில் புகார் செய்த பதிவுகள். பதிவை நீக்கினால் அதன் like/comment/share எல்லாம் சேர்ந்து நீங்கும்." : "Posts members reported in the Community feed. Removing a post removes its likes, comments and shares with it."}</p>
+          {reports.length === 0 && <p className="muted">{ta ? "புகார்கள் இல்லை." : "No reports."}</p>}
+          {reports.map((r) => (
+            <div key={r.id} className="card">
+              <b>{r.post_title}</b> <span className="badge">{r.status}</span>
+              <p className="small muted" style={{ margin: "4px 0" }}>
+                {ta ? "பதிவிட்டவர்" : "Posted by"}: {r.poster_name} · {ta ? "புகார் செய்தவர்" : "Reported by"}: {r.reporter_name} · {new Date(r.created_at).toLocaleString()}
+                {r.reason ? <><br />{ta ? "காரணம்" : "Reason"}: {r.reason}</> : null}
+              </p>
+              {r.status === "open" && (
+                <div className="row">
+                  <button className="btn small danger" onClick={() => post("/api/owner", { action: "removeReportedPost", postId: r.post_id }, ta ? "பதிவு நீக்கப்பட்டது" : "Post removed")}>{ta ? "பதிவை நீக்கு" : "Remove post"}</button>
+                  <button className="btn small" onClick={() => post("/api/owner", { action: "dismissReport", reportId: r.id }, ta ? "புகார் நிராகரிக்கப்பட்டது" : "Report dismissed")}>{ta ? "நிராகரி" : "Dismiss"}</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
       )}
 
       {board === "audit" && auditRows.map((a) => (

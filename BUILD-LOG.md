@@ -317,3 +317,138 @@ delivery people, and a clear way for buyers to contact the store.
   minmax(280px,1fr), video width 100%) — checked at source level; no
   browser probe was available in the build sandbox. Nothing was
   registered or written on production by these tests.
+
+## 2026-11-09 — Social Pack on the Community Feed (Phase 2)
+
+- Comments, follows, saves, stories, in-app notifications, member
+  profiles, search + hashtags, and post reports — method-level
+  equivalents of the familiar social patterns, built on the app's own
+  tables and words. Migration migrations/0011_social.sql (idempotent)
+  + the same tables self-initialise in src/lib/community.ts, so no
+  manual step is needed. New tables: community_comments,
+  community_follows (PRIMARY KEY pair + CHECK follower <> followee),
+  community_saves, community_stories, community_story_views,
+  community_reports.
+- Comments: signed-in members comment (empty comment -> bilingual
+  400); the comment's author OR the post's owner can delete it, anyone
+  else gets 403. Comment counts are COUNT(*) over real rows.
+- Follow: toggle follow/unfollow (follow yourself -> bilingual 400;
+  counts from real rows); feed gains All / Following / Saved views.
+- Save: bookmark toggle; the Saved view lists only the caller's own
+  saved posts.
+- Notifications: like, comment, follow and share events create rows via
+  the existing notify() helper for the other member (never for
+  yourself); new /app/notifications page + nav tab, unread badge in
+  the header now links there, mark-all-read. Labelled honestly on the
+  page: in-app only — no email, no phone push is sent.
+- Member profiles: /app/member?u=<id> shows display name, Founder
+  badge, follower/following counts, follow button and the member's
+  published posts. The profile API selects only id/name/founder_number
+  — no email or phone is ever selected or sent (test asserted the
+  payload has no email field).
+- Stories: publish own creative/video as a story; expiry is enforced
+  in SQL (created_at > now() - 24h) so an expired story is never
+  returned; views are unique real rows (author's own opening not
+  counted; a second view by the same member does not raise the count).
+- Search + hashtags: search matches post titles/captions and member
+  names; #hashtags are parsed from captions, returned in the payload,
+  rendered tappable, and filter the feed by exact tag.
+- Reports: any signed-in member can report a post (signed-out -> 401);
+  reports land in Owner Control (new "reports" board); the owner can
+  dismiss a report or remove the post (server-enforced owner-only —
+  non-owner board access -> 403; removal cascades and is audited).
+- FOUND FAULT, fixed in the same pass (class fix): user/post ids are
+  BIGSERIAL, so Postgres returns them as strings. The follow
+  self-check compared Number(userId) === user.id (string) and missed,
+  letting the no-self CHECK constraint turn a self-follow into a 500;
+  it now compares as numbers and returns the plain bilingual 400. The
+  same class in the client (Number(p.user_id) === me.id, never true)
+  broke the "Your post" badge/Remove button from Phase 1; the
+  comparison is now string-to-string.
+- Verification (local throwaway Postgres, production build, three real
+  accounts, Reel-18 negative tests included): tsc clean; build clean;
+  no-env smoke: /app/notifications 200, /app/member 200, API honest
+  503 SETUP_PENDING. Empty comment -> 400 bilingual; comment by another
+  member -> count 1 in feed; delete by unrelated member -> 403, by
+  post owner -> 200, by author -> 200; like/comment/share/follow each
+  produced a notification row for the post owner and mark-all-read
+  cleared the unread count to 0; follow self -> 400; follow ->
+  followerCount 1, profile followers 1, Following view shows the
+  post, unfollow -> view empty; save -> Saved view shows post, unsave
+  -> empty; story from another member's creative -> 404, own creative
+  -> 200, two views by the same member -> count stays 1, story
+  backdated to 25h -> absent from the list and view attempt -> 404;
+  search by title finds the post, search by name finds the member,
+  #TestTag finds the post, unknown tag -> none; report signed out ->
+  401, report -> owner board lists it open, dismiss -> dismissed,
+  owner remove -> post gone from the feed. Phase 1 spot-checks
+  (no-title publish 400, other's creative 404) re-passed. Overflow:
+  new pages reuse the fluid classes; the stories row scrolls
+  horizontally by design inside its own strip; checked at source
+  level (no browser probe in the sandbox). Nothing was registered or
+  written on production by these tests.
+
+## 2026-11-09 — Usability + Guidance wave (Phase 3)
+
+- Owner's report: he could not understand how to use the app. This
+  wave adds guidance everywhere and clearer arrangement — NO feature,
+  data, price, claim or settled rule changed.
+- "Start here" 5-step path (new shared component
+  src/components/StartHere.tsx) on the landing page AND the signed-in
+  home: 1 Create your free account -> 2 Pick a design -> 3 Add your
+  words and photo -> 4 Export & share anywhere -> 5 Invite others with
+  your own link and earn free days. Big 48px numbered circles, EN +
+  Tamil, every button goes to the real page for that step (sign-up,
+  Library, Studio, Studio's Export & Share, Growth). Signed-in members
+  see step 1 ticked done. The landing hero also gained a "How to use"
+  button.
+- Full guide page /app/guide (new): one card per main area — Design
+  Library & Studio, My Media, Export & Share, Community, Stores &
+  Marketplace, Delivery Partners, Growth & Invite, Plans & Payments,
+  Teams — plus a Notifications card and the Start here path on top.
+  Each card has 3–5 short numbered steps in simple words, English AND
+  Tamil shown together, and a button into the area. The guide renders
+  signed out too (it is guidance, never hidden behind sign-in); the
+  areas it points to ask for sign-in as before. A Guide tab was added
+  to the app navigation.
+- In-page help strip on every main page: AppShell now renders a
+  collapsible strip at the top of <main>, keyed by pathname — "❓ How
+  this page works · இந்தப் பக்கம் எப்படி வேலை செய்கிறது" with 3
+  numbered steps specific to that page, in the visitor's chosen
+  language. Collapsed by default; it never blocks the main action.
+  Pages covered (24): Dashboard, Studio, Campaigns, Design Library,
+  Showcase, Community, Notifications, Guide, Explore, Stores, My
+  Store, My Orders, Delivery, Teams, Partners, Growth, Plans, My
+  Media, Strategy, Member profile, Settings, Categories, Owner
+  Control, Sign-in. (The landing page carries the full Start here path
+  instead of a strip.)
+- Empty states: every named empty state now has one plain "next step"
+  line and a button to the right page — My Media (none), My Orders
+  (buyer -> Stores, seller -> My Store), Studio creative library
+  (none -> Design Library), Campaigns (none), Teams (no workspace),
+  Delivery (none available), Community feed (all/following/saved),
+  Notifications (none), member profile (no posts).
+- Tap targets: .btn is now inline-flex with min-height 44px and the
+  nav tabs are min-height 44px — same colours and identity, just
+  easier to tap. No heavy libraries added; motion unchanged (light).
+- FOUND FAULT, fixed in the same pass: the Growth page read the
+  invite link from d.inviteLink but /api/growth returns it as `link`,
+  so the plain invite-link line on the Growth page rendered EMPTY
+  (the code and the share texts were correct). The page now reads
+  d.link. Verified: the API's link carries the account's own code.
+- Verification: tsc clean; production build clean (route list
+  includes /app/guide). Sandbox walk on a throwaway Postgres with a
+  fresh account — all 39 checks passed: landing shows Start here with
+  all step texts + guide link; guide renders signed out with all 9
+  area cards and Tamil step lines; the help strip is present in the
+  server-rendered HTML of 15 checked pages; the 5-step walk — (1)
+  sign-up ok, (2) Library page 200, (3) creative saved with words via
+  the Studio's save path, (4) Studio page carries the Export & Share
+  panel (the download itself is a browser action — ExportShare
+  renders a real downloadable file in the browser; verified at source
+  level), (5) Growth API returns the fresh account's OWN invite code
+  and a link carrying that same code; Growth page 200. Overflow:
+  Start here rows, guide cards and the strip all use the fluid
+  .wrap/.card/.row classes with wrapping rows and min-widths below
+  390px; checked at source level (no browser probe in the sandbox).
+  Nothing was registered or written on production by these tests.
