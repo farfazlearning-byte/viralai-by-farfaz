@@ -536,3 +536,74 @@ delivery people, and a clear way for buyers to contact the store.
   callback/register -> playable URL) needs the production token and a
   browser; it cannot run in this sandbox. Production proof is the
   owner's retry of the same ~12.4 MB video after this deploys.
+
+## Sound fix — placed videos are no longer mute-locked (2026-11-10)
+- Owner proof + report: after the direct-to-Blob upload fix, his own
+  ~12.4 MB video uploaded and was placed in a Studio design ("Your media
+  is placed here ✓", Clean Starter 9:16) — but on playback there was NO
+  SOUND AT ALL, anywhere. Class audit of EVERY video surface in the app
+  (6 native <video> elements exist, total):
+  1. DesignScene placed video (src/components/ui.tsx) — FAULT: rendered
+     `autoPlay muted loop` with NO controls and NO unmute path. This one
+     component is the player for Studio compose preview, Studio saved
+     creatives, Design Library scenes, Community creative posts and
+     creative stories, and Member-page creative posts — so the whole
+     class was mute-locked by a single element.
+  2. ExportShare — FAULT (rule 3): video export recorded
+     canvas.captureStream(30) ONLY, and its source element was muted —
+     the exported file had NO audio track at all.
+  3. Already correct, unchanged: My Media list player, Community feed
+     direct videos, Community story-viewer direct videos, Member-page
+     direct videos — all native `controls`, no muted attribute or
+     property anywhere (no JS in the app sets .muted), so they play
+     WITH sound by default. Showcase has no real <video> at all
+     (animated CSS scenes, self-labelled "not video files").
+- The rule now enforced in code:
+  (1) Autoplay previews START muted only because browsers require it —
+      and every such video carries a visible sound toggle.
+  (2) Deliberately opened players play WITH sound by default.
+  (3) A video export INCLUDES the placed video's own audio track.
+- Fix 1 — ui.tsx: new SceneVideo component inside DesignScene. The
+  preview still starts muted (autoplay rule), now with a `.scene-sound`
+  toggle button riding on the scene (globals.css: absolute top-right,
+  z-index above the scene overlay, min-width/min-height 44px, bilingual
+  visible label "🔇 Sound off / ஒலி இல்லை" ↔ "🔊 Sound on / ஒலி
+  உள்ளது", bilingual title + aria-label, aria-pressed). The toggle
+  drives the muted PROPERTY via ref (v.muted = !next) and calls play()
+  on unmute — React's muted attribute alone only sets the initial
+  default and does not reliably toggle live playback.
+- Fix 2 — ExportShare.tsx exportVideo rewritten: an offscreen UNMUTED
+  clone of the placed video (crossOrigin anonymous, volume 1) feeds
+  BOTH the canvas frames and a WebAudio tap —
+  createMediaElementSource(clone) -> createMediaStreamDestination —
+  whose audio track is merged with the canvas video track into the
+  single MediaStream handed to MediaRecorder:
+  new MediaStream([...canvasStream.getVideoTracks(), audioTrack]).
+  The graph is never connected to ctx.destination, so no sound comes
+  out of the speakers during export; the AudioContext is created and
+  resumed first, inside the click's call stack. The success note only
+  claims "your video's own sound is included" when an audio track was
+  actually captured; the explanatory copy now states the same honestly.
+  Fallbacks preserved: no WebAudio / no audio track -> video-only
+  export exactly as before. The hidden JSX element stays muted —
+  it is a still-frame source for image exports only, never a player.
+  File naming honesty unchanged (MP4 where the browser truly produces
+  it, else WebM).
+- Verification: npx tsc --noEmit clean; production build clean
+  (all routes present incl. /app/studio, /app/community, /app/media).
+  No-env smoke on the production build: /, /auth, /app/media,
+  /app/community, /app/studio, /app/member, /app/library, /app/showcase
+  all 200; /api/public honest 503 SETUP_PENDING; zero 500s in the
+  server log. Source-level proof: final <video> inventory re-grepped
+  (6 elements, states as above); SceneVideo toggle + ref-driven muted
+  property present; ExportShare audio path read end to end
+  (el.muted = false -> createMediaElementSource ->
+  createMediaStreamDestination -> getAudioTracks()[0] merged into the
+  recorded MediaStream).
+  NOT verified (honestly): MediaRecorder/captureStream/WebAudio
+  behaviour in a real browser cannot run in this sandbox. Production
+  proof is the owner's phone retest: (a) Studio preview — tap
+  "🔇 Sound off / ஒலி இல்லை" on the placed video and the video's own
+  sound must play; (b) My Media / Community players already play with
+  sound via their native controls; (c) Export video — the downloaded
+  file must play WITH the video's own sound.

@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useRef, useState } from "react";
 import type { DesignDef } from "@/lib/designs";
 import type { Lang } from "@/lib/client";
 
@@ -13,6 +13,45 @@ export function Badge({ kind, lang }: { kind: "sim" | "reg" | "live" | "premium"
   } as const;
   const b = map[kind];
   return <span className={b.cls}>{lang === "ta" ? b.ta : b.en}</span>;
+}
+
+/** A placed video playing inside a design scene. Browsers only allow
+ *  autoplay when the video starts MUTED, so the preview starts silent —
+ *  but the video's OWN sound is one clearly visible tap away: the sound
+ *  toggle (≥44px, bilingual) unmutes this element and keeps it playing.
+ *  Sound class rule: no placed video may ever be mute-locked. */
+function SceneVideo({ src, lang }: { src: string; lang: Lang }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [soundOn, setSoundOn] = useState(false);
+  const ta = lang === "ta";
+  function toggle() {
+    const v = ref.current;
+    if (!v) return;
+    const next = !soundOn;
+    // Drive the muted PROPERTY via the ref — React's muted attribute only
+    // sets the initial default, it does not reliably toggle live playback.
+    v.muted = !next;
+    if (next) v.play().catch(() => {});
+    setSoundOn(next);
+  }
+  return (
+    <>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video ref={ref} src={src} className="scene-media scene-video" autoPlay muted loop playsInline preload="auto" />
+      <button
+        type="button"
+        className="scene-sound"
+        onClick={toggle}
+        aria-pressed={soundOn}
+        aria-label={soundOn
+          ? "Sound on — tap to mute · ஒலி உள்ளது — அணைக்கத் தட்டவும்"
+          : "Sound off — tap to hear the video's own sound · ஒலி இல்லை — வீடியோவின் சொந்த ஒலியைக் கேட்கத் தட்டவும்"}
+        title={soundOn ? "Sound on · ஒலி உள்ளது" : "Tap for sound · ஒலிக்கத் தட்டவும்"}
+      >
+        {soundOn ? "🔊" : "🔇"} {ta ? (soundOn ? "ஒலி உள்ளது" : "ஒலி இல்லை") : (soundOn ? "Sound on" : "Sound off")}
+      </button>
+    </>
+  );
 }
 
 /** A design preview rendered as a built-in graphic scene (gradient + words).
@@ -43,8 +82,10 @@ export function DesignScene({
       style={{ aspectRatio: ratio, background: `linear-gradient(150deg, ${a}, ${b})`, color: design.theme === "light" ? "#111" : "#fff" }}
     >
       {mediaUrl && mediaKind === "video" ? (
-        // A placed video PLAYS inside the design, replacing the built-in scene.
-        <video src={mediaUrl} className="scene-media scene-video" autoPlay muted loop playsInline preload="auto" />
+        // A placed video PLAYS inside the design, replacing the built-in
+        // scene — with a sound toggle (see SceneVideo): autoplay starts
+        // muted by browser rule, the video's own sound is one tap away.
+        <SceneVideo src={mediaUrl} lang={lang} />
       ) : mediaUrl && mediaKind !== "audio" ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={mediaUrl} alt="" className="scene-media" />

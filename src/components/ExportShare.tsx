@@ -170,17 +170,54 @@ export function ExportShare({
   }
 
   async function exportVideo() {
-    const v = videoRef.current;
-    if (!v || mediaKind !== "video") return;
+    if (mediaKind !== "video" || !mediaUrl) return;
     setBusy("video"); setNote("");
+    // Capture source: an offscreen, UNMUTED clone of the placed video. It
+    // feeds BOTH the canvas frames and — through WebAudio — a capture of
+    // the video's OWN audio track, so the exported file carries the sound.
+    // The audio graph ends at a stream destination ONLY (never at
+    // ctx.destination), so no sound comes out of the speakers while
+    // exporting; the sound lands in the recording. (The hidden JSX element
+    // stays muted: it is only a still-frame source for image exports.)
+    const el = document.createElement("video");
+    let actx: AudioContext | null = null;
     try {
-      if (v.readyState < 2) {
-        await new Promise<void>((resolve) => { v.addEventListener("loadeddata", () => resolve(), { once: true }); setTimeout(resolve, 5000); });
+      // Create/resume the AudioContext FIRST, inside this click's call
+      // stack, so the browser's user-activation rules let it run.
+      try {
+        const AC = window.AudioContext
+          ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AC) { actx = new AC(); await actx.resume().catch(() => {}); }
+      } catch { actx = null; }
+      el.src = mediaUrl;
+      el.crossOrigin = "anonymous";
+      el.playsInline = true;
+      el.muted = false;
+      el.volume = 1;
+      el.preload = "auto";
+      if (el.readyState < 2) {
+        await new Promise<void>((resolve) => { el.addEventListener("loadeddata", () => resolve(), { once: true }); setTimeout(resolve, 5000); });
       }
       const canvas = document.createElement("canvas");
       canvas.width = size.w; canvas.height = size.h;
       const ctx = canvas.getContext("2d")!;
-      const stream = canvas.captureStream(30);
+      const canvasStream = canvas.captureStream(30);
+      // The placed video's own audio track, tapped via WebAudio (best
+      // effort: a video with no audio track, or a browser without
+      // WebAudio, exports video-only exactly as before).
+      let audioTrack: MediaStreamTrack | null = null;
+      if (actx) {
+        try {
+          const srcNode = actx.createMediaElementSource(el);
+          const dest = actx.createMediaStreamDestination();
+          srcNode.connect(dest);
+          audioTrack = dest.stream.getAudioTracks()[0] ?? null;
+        } catch { audioTrack = null; }
+      }
+      const stream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...(audioTrack ? [audioTrack] : []),
+      ]);
       const mimes = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm"];
       const mime = mimes.find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)) ?? "";
       if (!mime) {
@@ -191,31 +228,36 @@ export function ExportShare({
       const chunks: BlobPart[] = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       const done = new Promise<void>((resolve) => { rec.onstop = () => resolve(); });
-      v.currentTime = 0;
-      await v.play().catch(() => {});
+      el.currentTime = 0;
+      await el.play().catch(() => {});
       rec.start(250);
-      const maxMs = Math.min((Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 30) * 1000, 60_000);
+      const maxMs = Math.min((Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 30) * 1000, 60_000);
       const started = Date.now();
       await new Promise<void>((resolve) => {
         const tick = () => {
-          drawScene(ctx, size.w, size.h, v, true);
-          if (v.ended || Date.now() - started > maxMs) { resolve(); return; }
+          if (el.paused && !el.ended) el.play().catch(() => {});
+          drawScene(ctx, size.w, size.h, el, true);
+          if (el.ended || Date.now() - started > maxMs) { resolve(); return; }
           requestAnimationFrame(tick);
         };
         tick();
       });
       rec.stop();
       await done;
-      v.pause();
+      el.pause();
       const ext = mime.includes("mp4") ? "mp4" : "webm";
       const blob = new Blob(chunks, { type: mime.split(";")[0] });
       download(blob, `viralai-${size.key}.${ext}`);
       setNote(ta
-        ? `Video தயார்: உங்கள் browser உருவாக்கிய ${ext.toUpperCase()} கோப்பு (${size.w}×${size.h}).`
-        : `Video ready: a ${ext.toUpperCase()} file produced by your browser (${size.w}×${size.h}).`);
+        ? `Video தயார்: உங்கள் browser உருவாக்கிய ${ext.toUpperCase()} கோப்பு (${size.w}×${size.h}).${audioTrack ? " உங்கள் வீடியோவின் சொந்த ஒலியும் அதில் சேர்க்கப்பட்டுள்ளது." : ""}`
+        : `Video ready: a ${ext.toUpperCase()} file produced by your browser (${size.w}×${size.h}).${audioTrack ? " Your video's own sound is included in it." : ""}`);
     } catch {
       taintedNote();
-    } finally { setBusy(""); }
+    } finally {
+      el.pause();
+      if (actx) { try { await actx.close(); } catch { /* already closed */ } }
+      setBusy("");
+    }
   }
 
   async function share() {
@@ -244,7 +286,9 @@ export function ExportShare({
     <div className="card">
       <h3>📤 {ta ? "Export & Share" : "Export & Share"}</h3>
       {mediaKind === "video" && mediaUrl && (
-        // Hidden source element: the SAME placed video the preview plays and exports read.
+        // Hidden STILL-FRAME source for image exports only — it never plays
+        // sound and is never heard. Video export builds its own unmuted
+        // capture element so the exported file carries the video's audio.
         // eslint-disable-next-line jsx-a11y/media-has-caption
         <video ref={videoRef} src={mediaUrl} muted playsInline preload="auto" crossOrigin="anonymous" style={{ display: "none" }} />
       )}
@@ -277,8 +321,8 @@ export function ExportShare({
       </div>
       {mediaKind === "video" && mediaUrl && (
         <p className="small muted">{ta
-          ? "Video export உங்கள் video-வையே பயன்படுத்துகிறது; கோப்பு வடிவம் (MP4 அல்லது WebM) உங்கள் browser உருவாக்குவதைப் பொறுத்தது — கோப்புப் பெயர் அதையே உண்மையாகக் காட்டும்."
-          : "Video export uses your own placed video; the file format (MP4 or WebM) is whatever your browser truly produces — the file name says so honestly."}</p>
+          ? "Video export உங்கள் video-வையே பயன்படுத்துகிறது; உங்கள் வீடியோவில் ஒலி இருந்தால், export கோப்பிலும் அந்தச் சொந்த ஒலி சேரும். கோப்பு வடிவம் (MP4 அல்லது WebM) உங்கள் browser உருவாக்குவதைப் பொறுத்தது — கோப்புப் பெயர் அதையே உண்மையாகக் காட்டும்."
+          : "Video export uses your own placed video; when your video has sound, the exported file includes that same sound. The file format (MP4 or WebM) is whatever your browser truly produces — the file name says so honestly."}</p>
       )}
       <p className="small muted">{ta
         ? "பகிர்வு என்பது கோப்பை உங்கள் சாதனத்தின் பகிர்வுத் திரை வழியாக அனுப்புவது — இந்த app உங்கள் கணக்குகளில் பதிவிடாது."
