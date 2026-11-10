@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
-import { AppShell, useLang } from "@/components/Shell";
+import Link from "next/link";
+import { AppShell, useLang, useMe } from "@/components/Shell";
 import { ErrBox } from "@/components/ui";
 import { api } from "@/lib/client";
+import { upload as blobUpload } from "@vercel/blob/client";
 
 interface Media { id: number; kind: string; name: string; blob_url: string; size_bytes: number }
 
@@ -49,8 +51,10 @@ export default function MediaPage() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [notice, setNotice] = useState("");
-  const [phase, setPhase] = useState<"" | "reading" | "uploading">("");
+  const [phase, setPhase] = useState<"" | "uploading">("");
+  const [progress, setProgress] = useState<number | null>(null);
   const [justUploaded, setJustUploaded] = useState(false);
+  const { me } = useMe();
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -91,6 +95,7 @@ export default function MediaPage() {
 
   function resetUpload() {
     setPhase("");
+    setProgress(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -105,31 +110,41 @@ export default function MediaPage() {
       return;
     }
     const sendKind = kind === "logo" && detected === "image" ? "logo" : detected;
+    if (!me) {
+      setErr(ta ? "சிறிது காத்திருந்து மீண்டும் முயற்சியுங்கள்." : "Please wait a moment and try again.");
+      return;
+    }
     setErr(""); setMsg(""); setJustUploaded(false);
-    setPhase("reading");
+    setPhase("uploading");
+    setProgress(null);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("read"));
-        r.readAsDataURL(file);
+      // Direct-to-storage upload: the file goes from this device straight
+      // to Blob storage with a token from /api/media/upload-token — it
+      // never passes through the app server as one big request, so large
+      // videos no longer die on the serverless payload limit.
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "file";
+      const pathname = `media/u${me.id}/${Date.now()}-${safe}`;
+      const blob = await blobUpload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/media/upload-token",
+        clientPayload: JSON.stringify({ kind: sendKind, name: file.name, rightsConfirmed: true }),
+        contentType: file.type || undefined,
+        onUploadProgress: (p) => setProgress(Math.round(p.percentage)),
       });
-      const dataBase64 = dataUrl.split(",")[1] ?? "";
-      setPhase("uploading");
-      const res = await fetch("/api/media", {
+      // Put the uploaded file on this account's shelf (idempotent — the
+      // storage callback may already have registered it).
+      const d = await api("/api/media/register", {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          url: blob.url,
+          pathname: blob.pathname,
           kind: sendKind,
           name: file.name,
           rightsConfirmed: true,
-          dataBase64,
           contentType: file.type || "",
         }),
       });
-      const d = (await res.json().catch(() => ({}))) as { error?: string; kindCorrected?: boolean; kind?: string };
-      if (!res.ok) throw new Error(d.error ?? "Upload failed");
-      if (d.kindCorrected && d.kind) {
+      if (d.kindCorrected && typeof d.kind === "string") {
         setNotice(ta
           ? `கோப்பின் உண்மையான வகை ${KIND_TA[d.kind] ?? d.kind} என்பதால் அப்படியே சேமித்தோம்.`
           : `The file's real type is ${d.kind}, so we saved it as that.`);
@@ -184,8 +199,10 @@ export default function MediaPage() {
           : "When you pick a file we detect its real type and set it for you — you don't have to pick the right type yourself."}</p>
         <label className="small"><input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} style={{ width: "auto" }} disabled={busy} /> {ta ? "இந்த ஊடகத்தைப் பயன்படுத்த எனக்கு உரிமை உள்ளது என்பதை உறுதிப்படுத்துகிறேன்." : "I confirm I have the rights to use this media."}</label>
         <p><button className="btn primary" onClick={upload} disabled={busy}>
-          {phase === "reading" ? (ta ? "கோப்பைப் படிக்கிறது…" : "Reading file…")
-            : phase === "uploading" ? (ta ? "பதிவேற்றுகிறது…" : "Uploading…")
+          {phase === "uploading"
+            ? progress !== null
+              ? (ta ? `பதிவேற்றுகிறது… ${progress}%` : `Uploading… ${progress}%`)
+              : (ta ? "பதிவேற்றுகிறது…" : "Uploading…")
             : ta ? "பதிவேற்று" : "Upload"}
         </button></p>
         <p className="small muted">{ta ? "முழு வீடியோ timeline திருத்தம் பின்னர் வரும் படி (REGISTERED)." : "Full video-timeline editing is a later step (REGISTERED)."}</p>
@@ -210,7 +227,13 @@ export default function MediaPage() {
           </div>
         ))}
       </div>
-      {items.length === 0 && <p className="muted">{ta ? "இன்னும் ஊடகம் இல்லை." : "No media yet."}</p>}
+      {items.length === 0 && (
+        <div className="card">
+          <p className="muted" style={{ marginTop: 0 }}>{ta ? "இன்னும் ஊடகம் இல்லை." : "No media yet."}</p>
+          <p className="small">{ta ? "அடுத்த படி: மேலே உள்ள upload பெட்டியால் ஒரு படம் அல்லது வீடியோவை ஏற்றுங்கள் — பிறகு அதை Studio-வில் பயன்படுத்தலாம்." : "Next step: upload a photo or video with the upload box above — then use it in the Studio."}</p>
+          <Link className="btn small" href="/app/studio">{ta ? "Studio-வைத் திற" : "Open the Studio"}</Link>
+        </div>
+      )}
     </AppShell>
   );
 }

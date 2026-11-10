@@ -452,3 +452,87 @@ delivery people, and a clear way for buyers to contact the store.
   .wrap/.card/.row classes with wrapping rows and min-widths below
   390px; checked at source level (no browser probe in the sandbox).
   Nothing was registered or written on production by these tests.
+
+## 2026-11-10 — My Media upload FIX: client direct-to-Blob uploads
+
+- FAULT (owner-reported on production, 2026-11-10): My Media showed
+  "Upload failed" for a ~12.4 MB WhatsApp video. TWO root causes:
+  (1) the page read the whole file as base64 and sent it as ONE JSON
+  POST to /api/media — a ~12 MB video becomes a ~16 MB request body,
+  which the Vercel serverless payload limit (~4.5 MB) kills before
+  storage is ever reached; (2) the production Blob store connected
+  first ("viralai-by-farfaz-blob") is PRIVATE, so the old
+  access:"public" put() could never have succeeded at any size.
+- FIX — the Vercel pattern for large files: the browser now uploads
+  DIRECTLY to Blob storage with a short-lived client token; file bytes
+  never pass through a serverless function.
+  - NEW src/app/api/media/upload-token/route.ts — handleUpload from
+    @vercel/blob/client. Token generation requires a signed-in user;
+    the clientPayload is validated (kind in {image, logo, audio,
+    video}, name present, rightsConfirmed === true) and the pathname
+    must start with media/u<userId>/; allowedContentTypes image/*,
+    audio/*, video/*; maximumSizeInBytes = the kind's cap from the
+    existing limits (5/5/10/25 MB); tokenPayload carries
+    {userId, kind, name}. Validation failures are plain bilingual
+    sentences, never raw codes. The upload-completed callback (no
+    session cookie — handleUpload verifies it) registers the row
+    idempotently, taking real size/contentType from head().
+  - NEW src/app/api/media/register/route.ts — after the direct upload,
+    the page registers the file: signed-in only, rights required,
+    pathname must be inside the caller's own folder (403 otherwise),
+    the blob must really exist (head(), time-bounded at 8 s so a forged
+    URL fails fast), real contentType/size come from Blob, the family
+    auto-detect rules are applied (logo must be an image; mismatches
+    corrected to the file's real family), the per-kind cap is enforced
+    against the real size (413), insert is idempotent — returns
+    {id, url, kind, kindCorrected} like the old POST.
+  - Shared rules moved to NEW src/lib/media.ts (limits, familyOf,
+    correctKind, validateUploadRequest, insertMediaRow) so all three
+    routes enforce exactly the same rules.
+  - Dedupe: migration 0012 adds a UNIQUE index on media(blob_url);
+    the app also self-initialises it on first insert (same pattern as
+    the community tables); both registration paths insert with
+    ON CONFLICT DO NOTHING.
+  - src/app/api/media/route.ts: the base64 POST is REMOVED (single
+    upload path). GET unchanged. DELETE now also best-effort del()s
+    the stored blob (failures ignored — the row is already gone).
+  - Page (src/app/app/media/page.tsx): base64 FileReader flow replaced
+    with upload() from @vercel/blob/client — pathname
+    media/u<myUserId>/<timestamp>-<safe name>, access "public",
+    clientPayload {kind, name, rightsConfirmed:true}, live percentage
+    on the Upload button via onUploadProgress; then the register call.
+    Look, bilingual copy, limits, rights checkbox and the
+    kindCorrected note are unchanged.
+- TOKEN RESOLUTION (same day, after the store check): production has
+  TWO Blob stores — the private original (BLOB_READ_WRITE_TOKEN) and
+  the PUBLIC media store "viralai-by-farfaz-media" connected under a
+  distinct env prefix (MEDIA_BLOB_READ_WRITE_TOKEN). Every Blob call
+  now resolves its token via blobToken() in src/lib/blob.ts:
+  MEDIA_BLOB_READ_WRITE_TOKEN || BLOB_READ_WRITE_TOKEN. blobReady()
+  checks the same resolved token; handleUpload receives it explicitly
+  (its `token` option); head()/del()/put() pass it explicitly. Access
+  stays "public" everywhere — blob_url remains directly playable.
+- Verification (Reel-18 discipline): tsc clean; production build
+  clean (routes /api/media, /api/media/register,
+  /api/media/upload-token all present). No-env smoke: /, /app/media,
+  /auth 200; both new endpoints honest 503 SETUP_PENDING, never 500.
+  Throwaway Postgres 16 (migrations 0001–0012 all applied, DB dropped
+  after) + production build + a real signed-up test account:
+  signed-out token request -> 401; signed-out register -> 401;
+  signed-in token request with rightsConfirmed missing -> 400
+  bilingual; foreign pathname media/u999/... -> 400; unsupported kind
+  -> 400; name missing -> 400; fully valid request with no Blob token
+  -> 503 bilingual setup message; register foreign pathname -> 403;
+  register rights missing -> 400; register valid shape, no token ->
+  503. With a dummy token (plain BLOB_ and MEDIA_-only, both proven):
+  fully valid token request -> 200 with a real signed clientToken
+  (MEDIA_-only run: the issued token carries the MEDIA store id, so
+  resolution is proven, and GET /api/media reports blobReady:true);
+  register with a non-existent blob URL -> 400 bilingual not-found,
+  ZERO rows inserted. Insert idempotency verified at SQL level with
+  the exact statement insertMediaRow runs: first insert RETURNING id,
+  duplicate insert RETURNING nothing, exactly one row.
+  NOT verified (honestly): a real Blob round-trip (browser -> Blob ->
+  callback/register -> playable URL) needs the production token and a
+  browser; it cannot run in this sandbox. Production proof is the
+  owner's retry of the same ~12.4 MB video after this deploys.
